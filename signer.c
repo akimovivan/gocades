@@ -10,7 +10,6 @@ int cades_sign_with_options(const char* data, int data_len,
         return -1;
     }
 
-    // Open certificate store
     HCERTSTORE hStore = CertOpenSystemStoreA(0, store_name);
     if (!hStore) {
         printf("Failed to open certificate store: %s\n", store_name);
@@ -164,4 +163,112 @@ int get_signer_info(SignerInfo* info) {
 
     CertCloseStore(hStore, 0);
     return 0;
+}
+
+int cades_verify_message(const char* signed_message, VerificationResult* result) {
+    if (!signed_message || !result) {
+        return -1;
+    }
+
+    // Initialize result structure
+    result->verified = 0;
+    result->status = 0;
+    result->error_message = NULL;
+
+    CRYPT_VERIFY_MESSAGE_PARA cryptVerifyPara = { sizeof(cryptVerifyPara) };
+    cryptVerifyPara.dwMsgAndCertEncodingType = 
+        X509_ASN_ENCODING | PKCS_7_ASN_ENCODING;
+
+    CADES_VERIFY_MESSAGE_PARA verifyPara = { sizeof(verifyPara) };
+    verifyPara.pVerifyMessagePara = &cryptVerifyPara;
+
+    PCADES_VERIFICATION_INFO pVerifyInfo = NULL;
+    PCRYPT_DATA_BLOB pContent = NULL;
+
+    if (!CadesVerifyMessage(&verifyPara, 0,
+        (BYTE*)signed_message, (DWORD)strlen(signed_message), &pContent, &pVerifyInfo)) {
+        
+        // Try to get error information
+        DWORD error = GetLastError();
+        result->error_message = malloc(256);
+        if (result->error_message) {
+            snprintf(result->error_message, 256, "CadesVerifyMessage() failed with error: 0x%08X", (unsigned int)error);
+        }
+        
+        if (pVerifyInfo) CadesFreeVerificationInfo(pVerifyInfo);
+        return -2;
+    }
+
+    // Store verification status
+    result->status = pVerifyInfo->dwStatus;
+    result->verified = (pVerifyInfo->dwStatus == CADES_VERIFY_SUCCESS);
+
+    // Cleanup
+    if (!CadesFreeVerificationInfo(pVerifyInfo)) {
+        CadesFreeBlob(pContent);
+        result->error_message = strdup("CadesFreeVerificationInfo() failed");
+        return -3;
+    }
+
+    if (!CadesFreeBlob(pContent)) {
+        result->error_message = strdup("CadesFreeBlob() failed");
+        return -4;
+    }
+
+    return 0; // Success
+}
+
+// Simple verification function (your original function)
+int sign_verify(const char* signed_message) {
+    if (!signed_message) {
+        printf("Null signed message provided\n");
+        return 1;
+    }
+
+    CRYPT_VERIFY_MESSAGE_PARA cryptVerifyPara = { sizeof(cryptVerifyPara) };
+    cryptVerifyPara.dwMsgAndCertEncodingType = 
+        X509_ASN_ENCODING | PKCS_7_ASN_ENCODING;
+
+    CADES_VERIFY_MESSAGE_PARA verifyPara = { sizeof(verifyPara) };
+    verifyPara.pVerifyMessagePara = &cryptVerifyPara;
+
+    PCADES_VERIFICATION_INFO pVerifyInfo = NULL;
+    PCRYPT_DATA_BLOB pContent = NULL;
+
+    if (!CadesVerifyMessage(&verifyPara, 0,
+        (BYTE*)signed_message, (DWORD)strlen(signed_message), &pContent, &pVerifyInfo)) {
+        
+        DWORD error = GetLastError();
+        printf("CadesVerifyMessage() failed with error: 0x%08X\n", (unsigned int)error);
+        
+        if (pVerifyInfo) CadesFreeVerificationInfo(pVerifyInfo);
+        return 1;
+    }
+
+    if (pVerifyInfo->dwStatus != CADES_VERIFY_SUCCESS) {
+        printf("Message is not verified successfully. Status: %d\n", pVerifyInfo->dwStatus);
+    } else {
+        printf("Message verified successfully.\n");
+    }
+
+    if (!CadesFreeVerificationInfo(pVerifyInfo)) {
+        CadesFreeBlob(pContent);
+        printf("CadesFreeVerificationInfo() failed\n");
+        return 2;
+    }
+
+    if (!CadesFreeBlob(pContent)) {
+        printf("CadesFreeBlob() failed\n");
+        return 3;
+    }
+
+    return (pVerifyInfo->dwStatus == CADES_VERIFY_SUCCESS) ? 0 : 4;
+}
+
+// Helper function to free verification result memory
+void free_verification_result(VerificationResult* result) {
+    if (result && result->error_message) {
+        free(result->error_message);
+        result->error_message = NULL;
+    }
 }
