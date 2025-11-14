@@ -163,6 +163,7 @@ func (s *Signer) VerifySignature(signedMessage []byte) (*VerificationResult, err
 
 // VerifySignatureSimple provides a simple boolean verification result
 func (s *Signer) VerifySignatureSimple(signedMessage []byte) (bool, error) {
+
 	result, err := s.VerifySignature(signedMessage)
 	if err != nil {
 		return false, err
@@ -190,7 +191,7 @@ func SignVerify(signedMessage []byte) error {
 	cSignedMessage := C.CString(string(signedMessage))
 	defer C.free(unsafe.Pointer(cSignedMessage))
 
-	result := C.sign_verify(cSignedMessage)
+	result := C.sign_verify(cSignedMessage, C.int(len(signedMessage)))
 
 	switch result {
 	case 0:

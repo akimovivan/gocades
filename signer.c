@@ -218,8 +218,8 @@ int cades_verify_message(const char* signed_message, VerificationResult* result)
     return 0; // Success
 }
 
-// Simple verification function (your original function)
-int sign_verify(const char* signed_message) {
+// Simple verification function
+int sign_verify(const char* signed_message, int signature_len) {
     if (!signed_message) {
         printf("Null signed message provided\n");
         return 1;
@@ -236,7 +236,7 @@ int sign_verify(const char* signed_message) {
     PCRYPT_DATA_BLOB pContent = NULL;
 
     if (!CadesVerifyMessage(&verifyPara, 0,
-        (BYTE*)signed_message, (DWORD)strlen(signed_message), &pContent, &pVerifyInfo)) {
+        (BYTE*)signed_message, (DWORD)signature_len, &pContent, &pVerifyInfo)) {
         
         DWORD error = GetLastError();
         printf("CadesVerifyMessage() failed with error: 0x%08X\n", (unsigned int)error);

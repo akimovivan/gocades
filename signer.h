@@ -39,7 +39,7 @@ int cades_verify_message_debug(const char* signed_message, VerificationResult* r
 void free_verification_result(VerificationResult* result);
 
 // Simple verification function (returns 0 on success, error code on failure)
-int sign_verify(const char* signed_message);
+int sign_verify(const char* signed_message, int signature_len);
 
 #ifdef __cplusplus
 }
