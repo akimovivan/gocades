@@ -135,13 +135,15 @@ func SignVerify(signedMessage []byte) error {
 	case 0:
 		return nil // Success
 	case 1:
-		return errors.New("CadesVerifyMessage failed")
+		return errors.New("Null message passed")
 	case 2:
-		return errors.New("CadesFreeVerificationInfo failed")
+		return errors.New("CadesVerifyMessage() failed")
 	case 3:
-		return errors.New("CadesFreeBlob failed")
+		return errors.New("CadesFreeVerificationInfo() failed")
 	case 4:
-		return errors.New("signature verification failed")
+		return errors.New("CadesFreeBlob() failed")
+	case 5:
+		return errors.New("Failed verification")
 	default:
 		return fmt.Errorf("unknown verification error: %d", result)
 	}

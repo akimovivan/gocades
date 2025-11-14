@@ -189,7 +189,7 @@ int sign_verify(const char* signed_message, int signature_len) {
         printf("CadesVerifyMessage() failed with error: 0x%08X\n", (unsigned int)error);
         
         if (pVerifyInfo) CadesFreeVerificationInfo(pVerifyInfo);
-        return 1;
+        return 2;
     }
 
     if (pVerifyInfo->dwStatus != CADES_VERIFY_SUCCESS) {
@@ -201,13 +201,13 @@ int sign_verify(const char* signed_message, int signature_len) {
     if (!CadesFreeVerificationInfo(pVerifyInfo)) {
         CadesFreeBlob(pContent);
         printf("CadesFreeVerificationInfo() failed\n");
-        return 2;
+        return 3;
     }
 
     if (!CadesFreeBlob(pContent)) {
         printf("CadesFreeBlob() failed\n");
-        return 3;
+        return 4;
     }
 
-    return (pVerifyInfo->dwStatus == CADES_VERIFY_SUCCESS) ? 0 : 4;
+    return (pVerifyInfo->dwStatus == CADES_VERIFY_SUCCESS) ? 0 : 5;
 }
