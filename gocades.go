@@ -133,7 +133,6 @@ func (s *Signer) VerifySignature(signedMessage []byte) (*VerificationResult, err
 		return nil, errors.New("signed message cannot be empty")
 	}
 
-	// Convert Go byte slice to C string (null-terminated)
 	cSignedMessage := C.CString(string(signedMessage))
 	defer C.free(unsafe.Pointer(cSignedMessage))
 
