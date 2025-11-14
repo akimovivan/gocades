@@ -120,69 +120,7 @@ type SignerInfo struct {
 	HasPrivateKey    bool
 }
 
-// VerificationResult represents the result of signature verification
-type VerificationResult struct {
-	Verified     bool
-	Status       int
-	ErrorMessage string
-}
-
-// VerifySignature verifies a CAdES signature and returns detailed results
-func (s *Signer) VerifySignature(signedMessage []byte) (*VerificationResult, error) {
-	if len(signedMessage) == 0 {
-		return nil, errors.New("signed message cannot be empty")
-	}
-
-	cSignedMessage := C.CString(string(signedMessage))
-	defer C.free(unsafe.Pointer(cSignedMessage))
-
-	var cResult C.VerificationResult
-	defer C.free_verification_result(&cResult)
-
-	resultCode := C.cades_verify_message(cSignedMessage, &cResult)
-
-	if resultCode != 0 {
-		return nil, fmt.Errorf("verification failed with code %d", resultCode)
-	}
-
-	isVerified := false
-	if cResult.verified > 0 {
-		isVerified = true
-	}
-	goResult := &VerificationResult{
-		Verified: bool(isVerified),
-		Status:   int(cResult.status),
-	}
-
-	if cResult.error_message != nil {
-		goResult.ErrorMessage = C.GoString(cResult.error_message)
-	}
-
-	return goResult, nil
-}
-
-// VerifySignatureSimple provides a simple boolean verification result
-func (s *Signer) VerifySignatureSimple(signedMessage []byte) (bool, error) {
-
-	result, err := s.VerifySignature(signedMessage)
-	if err != nil {
-		return false, err
-	}
-	return result.Verified, nil
-}
-
-// VerifySignatureString verifies a signature from a string
-func (s *Signer) VerifySignatureString(signedMessage string) (*VerificationResult, error) {
-	return s.VerifySignature([]byte(signedMessage))
-}
-
-// SimpleVerify is a convenience function for simple verification
-func SimpleVerify(signedMessage []byte) (bool, error) {
-	signer := NewSigner()
-	return signer.VerifySignatureSimple(signedMessage)
-}
-
-// Your original C function wrapper (returns simple success/failure)
+// Return error on failed verification
 func SignVerify(signedMessage []byte) error {
 	if len(signedMessage) == 0 {
 		return errors.New("signed message cannot be empty")
@@ -191,7 +129,7 @@ func SignVerify(signedMessage []byte) error {
 	cSignedMessage := C.CString(string(signedMessage))
 	defer C.free(unsafe.Pointer(cSignedMessage))
 
-	result := C.sign_verify(cSignedMessage, C.int(len(signedMessage)))
+	result := C.sign_verify((*C.char)(unsafe.Pointer(&signedMessage[0])), C.int(len(signedMessage)))
 
 	switch result {
 	case 0:
@@ -226,13 +164,6 @@ func mapError(code C.int) error {
 		return errors.New("signing operation failed")
 	case -7:
 		return errors.New("failed to copy signature")
-	// Add verification errors
-	case -8:
-		return errors.New("verification failed - CadesVerifyMessage error")
-	case -9:
-		return errors.New("verification failed - memory cleanup error")
-	case -10:
-		return errors.New("verification failed - blob cleanup error")
 	default:
 		return fmt.Errorf("crypto pro error (code %d)", code)
 	}
