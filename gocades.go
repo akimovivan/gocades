@@ -1,8 +1,10 @@
-//go:build windows
+//go:build linux || windows
 
 package gocades
 
 /*
+#cgo linux CFLAGS: -DUNIX -I/opt/cprocsp/include/pki -I/opt/cprocsp/include/cpcsp -I/opt/cprocsp/include
+#cgo linux LDFLAGS: -L/opt/cprocsp/lib/amd64 -lcades -lcapi20 -lcapi10 -lrdrsup
 #cgo windows CFLAGS: -IC:/Progra~2/Crypto~1/SDK/include
 #cgo windows LDFLAGS: -LC:/Progra~2/Crypto~1/SDK/lib/amd64 -Wl,-Bstatic -lcades -lcrypt32 -lws2_32 -lstdc++ -lgcc -Wl,-Bdynamic
 #include "signer.h"
