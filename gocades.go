@@ -84,7 +84,6 @@ func (s *Signer) Sign(data []byte) ([]byte, error) {
 		return nil, mapError(result)
 	}
 
-	// Ensure C memory is freed, even if GoBytes panics
 	signature := C.GoBytes(unsafe.Pointer(outSig), outLen)
 	C.free(unsafe.Pointer(outSig))
 
