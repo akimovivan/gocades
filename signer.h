@@ -26,6 +26,8 @@ int get_signer_info(SignerInfo* info);
 int cades_sign_simple(const char* data, int data_len, 
                      unsigned char** out_sig, int* out_len);
 
+int sign_from_example(unsigned char *data,  int data_size, unsigned char **signed_message, int *out_len);
+
 #ifdef __cplusplus
 }
 #endif

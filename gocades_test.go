@@ -34,6 +34,16 @@ func TestSigning(t *testing.T) {
 	t.Logf("Advanced signature: %d bytes\n", len(signature2))
 }
 
+func TestSigningFromExample(t *testing.T) {
+	data := []byte("Hello, World!")
+	signedMessage, err := cades.SignFromExample(data)
+	if err != nil {
+		t.Errorf("failed to sign message: %v", err)
+	}
+
+	t.Logf("Signed message: %s", string(signedMessage))
+}
+
 // func TestVerification(t *testing.T) {
 // 	data := []byte("Hello")
 // 	signature, err := cades.SignSimple(data)

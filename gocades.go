@@ -121,6 +121,42 @@ type SignerInfo struct {
 	HasPrivateKey    bool
 }
 
+func SignFromExample(data []byte) ([]byte, error) {
+	if len(data) == 0 {
+		return nil, errors.New("data cannot be empty")
+	}
+
+	var (
+		outSig *C.uchar
+		outLen C.int
+	)
+
+	result := C.sign_from_example(
+		(*C.uchar)(unsafe.Pointer(&data[0])),
+		C.int(len(data)),
+		&outSig,
+		&outLen,
+	)
+
+	if result != 0 {
+		switch result {
+		case -1:
+			return nil, fmt.Errorf("CadesSignMessage() failed")
+		case -2:
+			return nil, fmt.Errorf("Error in making output")
+		case -3:
+			return nil, fmt.Errorf("CadesFreeBlob() failed")
+		default:
+			return nil, fmt.Errorf("unknown error")
+		}
+	}
+
+	signature := C.GoBytes(unsafe.Pointer(outSig), outLen)
+	C.free(unsafe.Pointer(outSig))
+
+	return signature, nil
+}
+
 func mapError(code C.int) error {
 	switch code {
 	case -1:
