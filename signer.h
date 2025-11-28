@@ -4,6 +4,8 @@
 #include "cades.h"
 #include <stdint.h>
 
+#define MY_ENCODING_TYPE (PKCS_7_ASN_ENCODING | X509_ASN_ENCODING)
+
 // NOTE: Errors
 typedef enum {
   SUCCESS,
@@ -39,6 +41,14 @@ SIGNER_ERR sign_simple(const unsigned char *data, DWORD data_size,
 SIGNER_ERR verify_signature(const unsigned char *signed_data,
                             size_t signed_data_size, GoCertInfo *cert_info,
                             uint *verification_status);
+
+int encrypt(unsigned char *pbContent, int cbContent,
+            unsigned char **pbEncryptedBlob, int *out_len);
+
+
+int decrypt(unsigned char *pbEncryptedBlob, unsigned int cbEncryptedBlob,
+            unsigned char **pbDecryptedBlob,
+            unsigned int *out_len); 
 #ifdef __cplusplus
 }
 #endif

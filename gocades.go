@@ -13,6 +13,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"unsafe"
 )
 
@@ -159,4 +160,71 @@ func (s *Signer) freeCertInfo(cCertInfo *C.GoCertInfo) {
 		C.free(unsafe.Pointer(cCertInfo.signing_algo))
 		cCertInfo.signing_algo = nil
 	}
+}
+
+func (s *Signer) Encrypt(data []byte) ([]byte, error) {
+	if len(data) == 0 {
+		return nil, errors.New("input data is empty")
+	}
+
+	cData := (*C.uchar)(unsafe.Pointer(&data[0]))
+	dataLen := C.int(len(data))
+
+	var cEncrypteddData *C.uchar
+	var encryptedDataLen C.int
+
+	result := C.encrypt(cData, dataLen, &cEncrypteddData, &encryptedDataLen)
+
+	if int(result) != 0 {
+		return nil, errors.New("signing failed")
+	}
+
+	if cEncrypteddData == nil || encryptedDataLen <= 0 {
+		return nil, errors.New("no signed data returned")
+	}
+
+	defer C.free(unsafe.Pointer(cEncrypteddData))
+
+	signedData := C.GoBytes(unsafe.Pointer(cEncrypteddData), encryptedDataLen)
+
+	signedMessage := make([]byte, len(signedData))
+	copy(signedMessage, signedData)
+
+	return signedMessage, nil
+}
+
+func (s *Signer) Decrypt(data []byte) ([]byte, error) {
+	if len(data) == 0 {
+		return nil, errors.New("input data is empty")
+	}
+
+	cData := (*C.uchar)(unsafe.Pointer(&data[0]))
+	dataLen := C.uint(len(data))
+
+	var cDecryptedData *C.uchar
+	var decryptedDataLen C.uint
+
+	slog.Info("datalen", "len", len(data))
+	slog.Info("before decrypt")
+	result := C.decrypt(cData, dataLen, &cDecryptedData, &decryptedDataLen)
+	slog.Info("after decrypt")
+	if int(result) != 0 {
+		slog.Error(fmt.Sprintf("failed to execute with code %d", int(result)))
+		return nil, errors.New("failed to decrypt")
+	}
+	slog.Debug("I was here", "outLen", decryptedDataLen)
+
+	if cDecryptedData == nil || decryptedDataLen <= 0 {
+		return nil, errors.New("no signed data returned")
+	}
+	slog.Debug("sas")
+
+	defer C.free(unsafe.Pointer(cDecryptedData))
+
+	decryptedData := C.GoBytes(unsafe.Pointer(cDecryptedData), C.int(decryptedDataLen))
+
+	decryptedMessage := make([]byte, len(decryptedData))
+	copy(decryptedMessage, decryptedData)
+
+	return decryptedMessage, nil
 }

@@ -28,3 +28,17 @@ func TestSigning(t *testing.T) {
 	_, _, err = signer.Verify(data)
 	require.Error(t, err)
 }
+
+func TestEncryption(t *testing.T) {
+	signer := NewSigner()
+
+	data := []byte("Hello world")
+
+	encryptedData, err := signer.Encrypt(data)
+	require.NoError(t, err)
+
+	decryptedData, err := signer.Decrypt(encryptedData)
+	require.NoError(t, err)
+
+	assert.Equal(t, data, decryptedData)
+}
