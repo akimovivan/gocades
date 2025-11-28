@@ -4,9 +4,10 @@
 package gocades
 
 /*
-#cgo CFLAGS: -DUNIX -I/opt/cprocsp/include/pki -I/opt/cprocsp/include/cpcsp -I/opt/cprocsp/include
+#cgo CFLAGS: -Wall -DUNIX -I/opt/cprocsp/include/pki -I/opt/cprocsp/include/cpcsp -I/opt/cprocsp/include
 #cgo LDFLAGS: -L/opt/cprocsp/lib/amd64 -lcades -lcapi20 -lcapi10 -lrdrsup
 #include "signer.h"
+#include <string.h>
 */
 import "C"
 import (
@@ -15,35 +16,40 @@ import (
 	"unsafe"
 )
 
+type CertInfo struct {
+	CertData         []byte
+	CertLength       uint32
+	SubjectName      string
+	SubjectLength    uint32
+	HasPrivateKey    bool
+	SerialNumber     []byte // hex encoded value
+	SigningAlgorithm string
+	Idx              int // Id of this certificate in c++ static array
+}
+
 // Signer provides cryptographic signing functionality using CryptoPro CAdES
 type Signer struct {
 	opts *Options
 }
 
-// Options configures the signer behavior
 type Options struct {
-	// CertificateStore specifies the system store to use (default: "MY")
 	CertificateStore string
-	// HashAlgorithm specifies the hash algorithm (default: "1.3.14.3.2.26" - SHA1)
-	HashAlgorithm string
+	HashAlgorithm    string
 }
 
-// DefaultOptions returns the default signing options
 func DefaultOptions() *Options {
 	return &Options{
 		CertificateStore: "MY",
-		HashAlgorithm:    "1.3.14.3.2.26", // SHA1
+		HashAlgorithm:    "1.3.14.3.2.26",
 	}
 }
 
-// NewSigner creates a new signer with default options
 func NewSigner() *Signer {
 	return &Signer{
 		opts: DefaultOptions(),
 	}
 }
 
-// NewSignerWithOptions creates a new signer with custom options
 func NewSignerWithOptions(opts *Options) *Signer {
 	if opts == nil {
 		opts = DefaultOptions()
@@ -51,122 +57,106 @@ func NewSignerWithOptions(opts *Options) *Signer {
 	return &Signer{opts: opts}
 }
 
-// Sign signs the input data using CryptoPro CAdES
 func (s *Signer) Sign(data []byte) ([]byte, error) {
 	if len(data) == 0 {
-		return nil, errors.New("data cannot be empty")
+		return nil, errors.New("input data is empty")
 	}
 
-	var (
-		outSig *C.uchar
-		outLen C.int
-	)
+	cData := (*C.uchar)(unsafe.Pointer(&data[0]))
+	dataLen := C.DWORD(len(data))
 
-	cStore := C.CString(s.opts.CertificateStore)
-	cHashAlg := C.CString(s.opts.HashAlgorithm)
-	defer func() {
-		C.free(unsafe.Pointer(cStore))
-		C.free(unsafe.Pointer(cHashAlg))
-	}()
+	var cSignedData *C.uchar
+	var signedDataLen C.DWORD
 
-	result := C.cades_sign_with_options(
-		(*C.char)(unsafe.Pointer(&data[0])),
-		C.int(len(data)),
-		cStore,
-		cHashAlg,
-		&outSig,
-		&outLen,
-	)
+	result := C.sign_simple(cData, dataLen, &cSignedData, &signedDataLen)
 
-	if result != 0 {
-		return nil, mapError(result)
+	if int(result) != 0 {
+		return nil, errors.New("signing failed")
 	}
 
-	// Ensure C memory is freed, even if GoBytes panics
-	signature := C.GoBytes(unsafe.Pointer(outSig), outLen)
-	C.free(unsafe.Pointer(outSig))
+	if cSignedData == nil || signedDataLen <= 0 {
+		return nil, errors.New("no signed data returned")
+	}
 
-	return signature, nil
+	defer C.free(unsafe.Pointer(cSignedData))
+
+	signedData := C.GoBytes(unsafe.Pointer(cSignedData), C.int(signedDataLen))
+
+	signedMessage := make([]byte, len(signedData))
+	copy(signedMessage, signedData)
+
+	return signedMessage, nil
 }
 
-// SignSimple is a convenience function for simple signing with default options
-func SignSimple(data []byte) ([]byte, error) {
-	signer := NewSigner()
-	return signer.Sign(data)
-}
-
-// GetSignerInfo returns information about available certificates
-func (s *Signer) GetSignerInfo() (*SignerInfo, error) {
-	var info C.SignerInfo
-	result := C.get_signer_info(&info)
-	if result != 0 {
-		return nil, mapError(result)
+func (s *Signer) Verify(data []byte) (bool, *CertInfo, error) {
+	if len(data) == 0 {
+		return false, nil, errors.New("input data is empty")
 	}
 
-	hasPrivateKey := false
-	if info.has_private_key > 0 {
-		hasPrivateKey = true
+	var cCertInfo C.GoCertInfo
+	cData := (*C.uchar)(unsafe.Pointer(&data[0]))
+	dataLen := C.size_t(len(data))
+	verificationStatus := C.uint(0)
+	defer s.freeCertInfo(&cCertInfo)
+
+	result := C.verify_signature(cData, dataLen, &cCertInfo, &verificationStatus)
+
+	fmt.Printf("len of cCertInfo: %d\n", cCertInfo.cert_length)
+
+	if result != C.SUCCESS {
+		return false, nil, errors.New("failed to verify signature")
 	}
 
-	return &SignerInfo{
-		CertificateCount: int(info.certificate_count),
-		HasPrivateKey:    hasPrivateKey,
-	}, nil
-}
-
-// SignerInfo contains information about available signing certificates
-type SignerInfo struct {
-	CertificateCount int
-	HasPrivateKey    bool
-}
-
-// Return error on failed verification
-func SignVerify(signedMessage []byte) error {
-	if len(signedMessage) == 0 {
-		return errors.New("signed message cannot be empty")
+	if int(verificationStatus) != 0 {
+		return false, nil, nil
 	}
 
-	cSignedMessage := C.CString(string(signedMessage))
-	defer C.free(unsafe.Pointer(cSignedMessage))
+	var certInfo CertInfo
 
-	result := C.sign_verify((*C.char)(unsafe.Pointer(&signedMessage[0])), C.int(len(signedMessage)))
-
-	switch result {
-	case 0:
-		return nil // Success
-	case 1:
-		return errors.New("Null message passed")
-	case 2:
-		return errors.New("CadesVerifyMessage() failed")
-	case 3:
-		return errors.New("CadesFreeVerificationInfo() failed")
-	case 4:
-		return errors.New("CadesFreeBlob() failed")
-	case 5:
-		return errors.New("Failed verification")
-	default:
-		return fmt.Errorf("unknown verification error: %d", result)
+	if cCertInfo.cert_data != nil && cCertInfo.cert_length > 0 {
+		certData := C.GoBytes(unsafe.Pointer(cCertInfo.cert_data), C.int(cCertInfo.cert_length))
+		certInfo.CertData = certData
+		certInfo.CertLength = uint32(cCertInfo.cert_length)
 	}
+
+	if cCertInfo.serial_number != nil && cCertInfo.serial_length > 0 {
+		serialBytes := C.GoBytes(unsafe.Pointer(cCertInfo.serial_number), C.int(cCertInfo.serial_length))
+		certInfo.SerialNumber = serialBytes
+	}
+
+	// Convert subject name
+	if cCertInfo.subject_name != nil && cCertInfo.subject_length > 0 {
+		subjectBytes := C.GoBytes(unsafe.Pointer(cCertInfo.subject_name), C.int(cCertInfo.subject_length))
+		certInfo.SubjectName = string(subjectBytes)
+		certInfo.SubjectLength = uint32(cCertInfo.subject_length)
+	}
+
+	if cCertInfo.signing_algo != nil && cCertInfo.algo_length > 0 {
+		algoBytes := C.GoBytes(unsafe.Pointer(cCertInfo.signing_algo), C.int(cCertInfo.algo_length))
+		certInfo.SigningAlgorithm = string(algoBytes)
+		//certInfo.SubjectLength = uint32(cCertInfo.subject_length)
+	}
+
+	certInfo.HasPrivateKey = cCertInfo.has_private_key != 0
+
+	return true, &certInfo, nil
 }
 
-// Add to your existing mapError function
-func mapError(code C.int) error {
-	switch code {
-	case -1:
-		return errors.New("invalid input parameters")
-	case -2:
-		return errors.New("failed to open certificate store")
-	case -3:
-		return errors.New("no valid certificate with private key found")
-	case -4:
-		return errors.New("failed to get signature size")
-	case -5:
-		return errors.New("memory allocation failed")
-	case -6:
-		return errors.New("signing operation failed")
-	case -7:
-		return errors.New("failed to copy signature")
-	default:
-		return fmt.Errorf("crypto pro error (code %d)", code)
+func (s *Signer) freeCertInfo(cCertInfo *C.GoCertInfo) {
+	if cCertInfo.cert_data != nil {
+		C.free(unsafe.Pointer(cCertInfo.cert_data))
+		cCertInfo.cert_data = nil
+	}
+	if cCertInfo.serial_number != nil {
+		C.free(unsafe.Pointer(cCertInfo.serial_number))
+		cCertInfo.serial_number = nil
+	}
+	if cCertInfo.subject_name != nil {
+		C.free(unsafe.Pointer(cCertInfo.subject_name))
+		cCertInfo.subject_name = nil
+	}
+	if cCertInfo.signing_algo != nil {
+		C.free(unsafe.Pointer(cCertInfo.signing_algo))
+		cCertInfo.signing_algo = nil
 	}
 }

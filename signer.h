@@ -1,34 +1,44 @@
 #ifndef SIGNER_H
 #define SIGNER_H
 
-#include <cades.h>
+#include "cades.h"
 #include <stdint.h>
+
+// NOTE: Errors
+typedef enum {
+  SUCCESS,
+  FAILURE,
+  ERR_OPEN_STORE,
+  ERR_NO_DATA,
+  ERR_CADES_VERIFY,
+  ERR_CADES_FREE_VERIFICATION_INFO,
+  ERR_CADES_FREE_BLOB,
+
+} SIGNER_ERR;
+
+// NOTE: structs
+typedef struct {
+  unsigned char *cert_data;     // Certificate encoded data
+  unsigned int cert_length;     // Length of certificate data
+  unsigned char *subject_name;  // Subject name (as UTF-8)
+  unsigned int subject_length;  // Length of subject name
+  int has_private_key;          // 1 if has private key, 0 otherwise
+  unsigned char *serial_number; // serial number
+  unsigned int serial_length;   // length of serial number
+  char *signing_algo;           // signing algorithm of the certificate
+  unsigned int algo_length;     // Length of signing_algo string
+} GoCertInfo;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// Signer information structure
-typedef struct {
-    int certificate_count;
-    int has_private_key;
-} SignerInfo;
+SIGNER_ERR sign_simple(const unsigned char *data, DWORD data_size,
+                       unsigned char **signed_data, DWORD *signed_data_size);
 
-// Main signing function with options
-int cades_sign_with_options(const char* data, int data_len, 
-                           const char* store_name, const char* hash_alg,
-                           unsigned char** out_sig, int* out_len);
-
-// Get information about available signers
-int get_signer_info(SignerInfo* info);
-
-// Simple signing function (backward compatibility)
-int cades_sign_simple(const char* data, int data_len, 
-                     unsigned char** out_sig, int* out_len);
-
-// Simple verification function (returns 0 on success, error code on failure)
-int sign_verify(const char* signed_message, int signature_len);
-
+SIGNER_ERR verify_signature(const unsigned char *signed_data,
+                            size_t signed_data_size, GoCertInfo *cert_info,
+                            uint *verification_status);
 #ifdef __cplusplus
 }
 #endif
