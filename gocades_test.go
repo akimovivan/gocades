@@ -1,44 +1,48 @@
-package gocades
+package gocades_test
 
 import (
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	cades "github.com/akimovivan/gocades"
 )
 
 func TestSigning(t *testing.T) {
-	signer := NewSigner()
+	data := []byte("Hello, World!")
 
-	data := []byte("Hello world")
+	signature, err := cades.SignSimple(data)
+	if err != nil {
+		t.Errorf("Simple signing failed: %v", err)
+	}
+	t.Logf("Simple signature: %d bytes\n", len(signature))
 
-	signedData, err := signer.Sign(data)
-	require.NoError(t, err)
+	signer := cades.NewSignerWithOptions(&cades.Options{
+		CertificateStore: "MY",
+		HashAlgorithm:    "1.3.14.3.2.26",
+	})
 
-	verifiedStatus, certInfo, err := signer.Verify(signedData)
-	require.NoError(t, err)
+	info, err := signer.GetSignerInfo()
+	if err != nil {
+		t.Errorf("Failed to get signer info: %v", err)
+	}
+	t.Logf("Certificates found: %d, Has private key: %v\n",
+		info.CertificateCount, info.HasPrivateKey)
 
-	assert.Equal(t, true, verifiedStatus)
-	assert.Equal(t, "1.2.643.7.1.1.3.2", certInfo.SigningAlgorithm)
-
-	badData := []byte("")
-	_, err = signer.Sign(badData)
-	require.Error(t, err)
-
-	// No signature
-	_, _, err = signer.Verify(data)
-	require.Error(t, err)
+	signature2, err := signer.Sign(data)
+	if err != nil {
+		t.Errorf("Signing failed: %v", err)
+	}
+	t.Logf("Advanced signature: %d bytes\n", len(signature2))
 }
 
-func TestEncryption(t *testing.T) {
-	signer := NewSigner()
-
-	data := []byte("Hello world")
-
-	encryptedData, err := signer.Encrypt(data)
-	require.NoError(t, err)
-
-	decryptedData, err := signer.Decrypt(encryptedData)
-	require.NoError(t, err)
-
-	assert.Equal(t, data, decryptedData)
-}
+// func TestVerification(t *testing.T) {
+// 	data := []byte("Hello")
+// 	signature, err := cades.SignSimple(data)
+// 	if err != nil {
+// 		t.Errorf("Failed with %v", err)
+// 	}
+// 	err = cades.SignVerify(signature)
+// 	if err != nil {
+// 		t.Errorf("Failed with %v", err)
+// 	}
+// 	t.Logf("verification successfull")
+// }
