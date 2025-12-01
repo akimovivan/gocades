@@ -7,6 +7,9 @@ import (
 	"testing"
 )
 
+// WARNING: requires at least one installed certificate in CryptoPro with
+// private key
+
 func TestSigning(t *testing.T) {
 	signer := NewSigner(nil)
 
@@ -55,6 +58,9 @@ func TestCertificatesHandling(t *testing.T) {
 
 	count = signer.CountCertificates()
 	assert.NotEqual(t, 0, count)
+
+	assert.Equal(t, count, len(signer.Certificates))
+	t.Log(signer.Certificates[0].SubjectName)
 
 	t.Logf("Counted %d certificates", count)
 

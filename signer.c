@@ -1,6 +1,7 @@
 #include "signer.h"
 #include "CSP_WinCrypt.h"
 #include "reader/tchar.h"
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,7 +21,7 @@ static BOOL isGostType(DWORD dwProvType) { return IS_GOST_PROV(dwProvType); }
 static void GetCertDName(PCERT_NAME_BLOB pNameBlob, char **pszName);
 
 static PCCERT_CONTEXT *certificates = NULL;
-static int cert_count = 0;
+static uint8_t cert_count = 0;
 
 //
 // NOTE: library func
@@ -168,10 +169,9 @@ cleanup:
   return SUCCESS;
 }
 
-// TODO: change to pointer return of verification
 SIGNER_ERR verify_signature(const unsigned char *signed_data,
-                            size_t signed_data_size, GoCertInfo *cert_info,
-                            uint *verification_status) {
+                            DWORD signed_data_size, GoCertInfo *cert_info,
+                            BOOL *verification_status) {
   if (signed_data == NULL || signed_data_size == 0) {
     return ERR_NO_DATA;
   }
@@ -299,8 +299,8 @@ SIGNER_ERR get_cert_info(PCCERT_CONTEXT pCertContext, GoCertInfo *cert_info) {
   return SUCCESS;
 }
 
-int encrypt(unsigned char *pbContent, int cbContent,
-            unsigned char **pbEncryptedBlob, int *out_len) {
+int encrypt(unsigned char *pbContent, DWORD cbContent,
+            unsigned char **pbEncryptedBlob, DWORD *out_len) {
   HCRYPTPROV hCryptProv = 0;
   HCERTSTORE hStoreHandle = 0;
   PCCERT_CONTEXT pRecipientCert = NULL;
@@ -469,7 +469,7 @@ int decrypt(unsigned char *pbEncryptedBlob, unsigned int cbEncryptedBlob,
   return 0;
 }
 
-int count_certificates() {
+uint8_t count_certificates() {
   return cert_count;
 }
 
@@ -545,7 +545,7 @@ SIGNER_ERR initialize_certificates() {
   return SUCCESS;
 }
 
-SIGNER_ERR get_certificate_by_id(int idx, GoCertInfo *cert_info) {
+SIGNER_ERR get_certificate_by_id(uint8_t idx, GoCertInfo *cert_info) {
   if (idx < 0 || idx >= cert_count) {
     return FAILURE;
   }

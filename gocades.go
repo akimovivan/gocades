@@ -54,7 +54,7 @@ func NewSigner(opts *Options) *Signer {
 	}
 
 	signer := &Signer{opts: opts, initialized: false}
-	runtime.SetFinalizer(signer, (*Signer).clearCertificates)
+	runtime.SetFinalizer(signer, (*Signer).finalize)
 	return signer
 }
 
@@ -96,8 +96,8 @@ func (s *Signer) Verify(data []byte) (bool, *CertInfo, error) {
 
 	var cCertInfo C.GoCertInfo
 	cData := (*C.uchar)(unsafe.Pointer(&data[0]))
-	dataLen := C.size_t(len(data))
-	verificationStatus := C.uint(0)
+	dataLen := C.DWORD(len(data))
+	verificationStatus := C.BOOL(0)
 	defer s.freeCertInfo(&cCertInfo)
 
 	result := C.verify_signature(cData, dataLen, &cCertInfo, &verificationStatus)
@@ -168,10 +168,10 @@ func (s *Signer) Encrypt(data []byte) ([]byte, error) {
 	}
 
 	cData := (*C.uchar)(unsafe.Pointer(&data[0]))
-	dataLen := C.int(len(data))
+	dataLen := C.DWORD(len(data))
 
 	var cEncrypteddData *C.uchar
-	var encryptedDataLen C.int
+	var encryptedDataLen C.DWORD
 
 	result := C.encrypt(cData, dataLen, &cEncrypteddData, &encryptedDataLen)
 
@@ -185,7 +185,7 @@ func (s *Signer) Encrypt(data []byte) ([]byte, error) {
 
 	defer C.free(unsafe.Pointer(cEncrypteddData))
 
-	signedData := C.GoBytes(unsafe.Pointer(cEncrypteddData), encryptedDataLen)
+	signedData := C.GoBytes(unsafe.Pointer(cEncrypteddData), C.int(encryptedDataLen))
 
 	signedMessage := make([]byte, len(signedData))
 	copy(signedMessage, signedData)
@@ -237,14 +237,27 @@ func (s *Signer) InitializeCertificates() error {
 	}
 	s.initialized = true
 
+	count := C.count_certificates()
+	certificates := make([]CertInfo, count)
+
+	for i := range int(count) {
+		cert, err := s.GetCertificateByIndex(i)
+		if err != nil {
+			return fmt.Errorf("failed to get certificates")
+		}
+
+		certificates[i] = *cert
+	}
+
+	s.Certificates = certificates
 	return nil
 }
 
-func (s *Signer) GetCertificateByIndex(idx uint) (*CertInfo, error) {
+func (s *Signer) GetCertificateByIndex(idx int) (*CertInfo, error) {
 	var cCertInfo C.GoCertInfo
 	defer s.freeCertInfo(&cCertInfo)
 
-	result := C.get_certificate_by_id(C.int(idx), &cCertInfo)
+	result := C.get_certificate_by_id(C.uint8_t(idx), &cCertInfo)
 
 	fmt.Printf("len of cCertInfo: %d\n", cCertInfo.cert_length)
 
@@ -280,10 +293,12 @@ func (s *Signer) GetCertificateByIndex(idx uint) (*CertInfo, error) {
 
 	certInfo.HasPrivateKey = cCertInfo.has_private_key != 0
 
+	certInfo.Idx = idx
+
 	return &certInfo, nil
 }
 
-func (s *Signer) clearCertificates() {
+func (s *Signer) finalize() {
 	if s.initialized {
 		C.clear_certificates()
 	}
