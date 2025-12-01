@@ -40,7 +40,7 @@ SIGNER_ERR sign_simple(const unsigned char *data, DWORD data_size,
 
 SIGNER_ERR verify_signature(const unsigned char *signed_data,
                             size_t signed_data_size, GoCertInfo *cert_info,
-                            uint *verification_status);
+                            unsigned int *verification_status);
 
 int encrypt(unsigned char *pbContent, int cbContent,
             unsigned char **pbEncryptedBlob, int *out_len);

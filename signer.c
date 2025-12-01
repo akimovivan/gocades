@@ -1,6 +1,6 @@
 #include "signer.h"
-#include "CSP_WinCrypt.h"
-#include "reader/tchar.h"
+#include "WinCryptEx.h"
+#include <tchar.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -162,7 +162,7 @@ cleanup:
 // TODO: change to pointer return of verification
 SIGNER_ERR verify_signature(const unsigned char *signed_data,
                             size_t signed_data_size, GoCertInfo *cert_info,
-                            uint *verification_status) {
+                            unsigned int *verification_status) {
   if (signed_data == NULL || signed_data_size == 0) {
     return ERR_NO_DATA;
   }
@@ -360,7 +360,7 @@ int encrypt(unsigned char *pbContent, int cbContent,
                            cbContent, NULL, &cbEncryptedBlob)) {
     HandleError("Getting EncrypBlob size failed.");
   }
-  printf("The encrypted message is %d bytes. \n", cbEncryptedBlob);
+  printf("The encrypted message is %lu bytes. \n", cbEncryptedBlob);
   *out_len = cbEncryptedBlob;
 
   // Распределение памяти под возвращаемый BLOB.
@@ -425,7 +425,7 @@ if (!CryptAcquireContext(
     HandleError("Error getting decrypted message size");
     return -1;
   }
-  printf("The size for the decrypted message is: %u.\n", tempCbDecryptedBlob);
+  printf("The size for the decrypted message is: %lu.\n", tempCbDecryptedBlob);
 
   // Allocate memory for the decrypted data in C
   *pbDecryptedBlob = (BYTE *)malloc(tempCbDecryptedBlob);
@@ -542,7 +542,7 @@ void HandleError(const char *s) {
   printf("An error occurred in running the program.\n");
   printf("%s\n", s);
   DWORD err = GetLastError();
-  printf("Error number %x\n.", err);
+  printf("Error number %lx\n.", err);
   printf("Program terminating.\n");
   exit(1);
 }
