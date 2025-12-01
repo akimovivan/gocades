@@ -48,6 +48,11 @@ func TestEncryption(t *testing.T) {
 	err = signer.InitializeCertificates()
 	require.NoError(t, err)
 
+	if len(signer.Certificates) > 1 {
+		t.Logf("First cert subj: %d '%s'\tSecond cert subject: %d '%s'", signer.Certificates[0].SubjectLength, signer.Certificates[0].SubjectName, signer.Certificates[1].SubjectLength, signer.Certificates[1].SubjectName)
+		signer.SelectedCert = 1
+	}
+
 	encryptedData, err = signer.Encrypt(data)
 	require.NoError(t, err)
 

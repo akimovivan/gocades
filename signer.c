@@ -23,6 +23,7 @@ static SIGNER_ERR get_cert_info(PCCERT_CONTEXT pCertContext,
 static void HandleError(const char *s);
 static BOOL isGostType(DWORD dwProvType) { return IS_GOST_PROV(dwProvType); }
 static void GetCertDName(PCERT_NAME_BLOB pNameBlob, char **pszName);
+static char *wide_to_utf8(const wchar_t *wide_str); 
 
 static PCCERT_CONTEXT *certificates = NULL;
 static uint8_t cert_count = 0;
@@ -228,9 +229,6 @@ SIGNER_ERR verify_signature(const unsigned char *signed_data,
 }
 
 SIGNER_ERR get_cert_info(PCCERT_CONTEXT pCertContext, GoCertInfo *cert_info) {
-  // memset(cert_info, 0, sizeof(GoCertInfo));
-
-  // Copy certificate data
   cert_info->cert_data = (unsigned char *)malloc(pCertContext->cbCertEncoded);
   if (cert_info->cert_data) {
     memcpy(cert_info->cert_data, pCertContext->pbCertEncoded,
@@ -240,7 +238,6 @@ SIGNER_ERR get_cert_info(PCCERT_CONTEXT pCertContext, GoCertInfo *cert_info) {
     return FAILURE;
   }
 
-  // Copy serial number
   cert_info->serial_number =
       (unsigned char *)malloc(pCertContext->pCertInfo->SerialNumber.cbData);
   if (cert_info->serial_number) {
@@ -252,20 +249,37 @@ SIGNER_ERR get_cert_info(PCCERT_CONTEXT pCertContext, GoCertInfo *cert_info) {
     return FAILURE;
   }
 
-  // Get subject name
   DWORD subject_len = CertGetNameStringA(
       pCertContext, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, NULL, NULL, 0);
 
+  // if (subject_len > 0) {
+  //   cert_info->subject_name =
+  //       (unsigned char *)malloc(subject_len); // Use char* for strings
+  //   if (cert_info->subject_name) {
+  //     CertGetNameStringA(pCertContext, CERT_NAME_FRIENDLY_DISPLAY_TYPE, 0,
+  //     NULL,
+  //                        (LPSTR)cert_info->subject_name, subject_len);
+  //     cert_info->subject_length = subject_len - 1;
+  //   } else {
+  //     return FAILURE;
+  //   }
+  // }
+
   if (subject_len > 0) {
-    cert_info->subject_name =
-        (unsigned char *)malloc(subject_len); // Use char* for strings
-    if (cert_info->subject_name) {
-      CertGetNameStringA(pCertContext, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, NULL,
-                         (LPSTR)cert_info->subject_name, subject_len);
-      cert_info->subject_length = subject_len - 1; // Exclude null terminator
-    } else {
-      return FAILURE;
+    wchar_t *wide_subject = (wchar_t *)malloc(subject_len * sizeof(wchar_t));
+    if (wide_subject) {
+      CertGetNameStringW(pCertContext, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, NULL,
+                         wide_subject, subject_len);
+
+      char *utf8_subject = wide_to_utf8(wide_subject);
+      if (utf8_subject) {
+        cert_info->subject_name = (unsigned char *)utf8_subject;
+        cert_info->subject_length = strlen(utf8_subject);
+      }
+      free(wide_subject);
     }
+  } else {
+    return FAILURE;
   }
 
   const char *oid = pCertContext->pCertInfo->SignatureAlgorithm.pszObjId;
@@ -392,51 +406,30 @@ int decrypt(unsigned char *pbEncryptedBlob, DWORD cbEncryptedBlob,
   }
   printf("The MY store is open. \n");
 
-  // Initialize structure
-  memset(&decryptParams, 0, sizeof(CRYPT_DECRYPT_MESSAGE_PARA));
+  ZeroMemory(&decryptParams, sizeof(CRYPT_DECRYPT_MESSAGE_PARA));
   decryptParams.cbSize = sizeof(CRYPT_DECRYPT_MESSAGE_PARA);
   decryptParams.dwMsgAndCertEncodingType = MY_ENCODING_TYPE;
   decryptParams.cCertStore = 1;
   decryptParams.rghCertStore = &hStoreHandle;
 
-  DWORD tempCbDecryptedBlob = 0; // Use a temp variable for the size
+  DWORD tempCbDecryptedBlob = 0;
   if (!CryptDecryptMessage(&decryptParams, pbEncryptedBlob, cbEncryptedBlob,
                            NULL, &tempCbDecryptedBlob, NULL)) {
-    HandleError("Error getting decrypted message size");
     return -1;
   }
-  printf("The size for the decrypted message is: %u.\n", tempCbDecryptedBlob);
-
-  // Allocate memory for the decrypted data in C
   *pbDecryptedBlob = (BYTE *)malloc(tempCbDecryptedBlob);
-  if (!(*pbDecryptedBlob)) { // Check the dereferenced pointer
-    // DO NOT free pbEncryptedBlob here - it's managed by Go
+  if (!(*pbDecryptedBlob)) {
     HandleError("Memory allocation error while decrypting");
     return -2;
   }
 
-  // Call CryptDecryptMessage again to get the actual decrypted data
   if (!CryptDecryptMessage(&decryptParams, pbEncryptedBlob, cbEncryptedBlob,
                            *pbDecryptedBlob, &tempCbDecryptedBlob, NULL)) {
-    free(*pbDecryptedBlob);  // Free the allocated buffer, not the
-                             // pointer-to-pointer
-    *pbDecryptedBlob = NULL; // Set it to NULL to signal failure
-    // DO NOT free pbEncryptedBlob here - it's managed by Go
-    HandleError("Error decrypting the message");
+    free(*pbDecryptedBlob);
+    *pbDecryptedBlob = NULL;
     return -3;
   }
-
-  // Update the output size parameter
   *out_len = tempCbDecryptedBlob;
-
-  printf("Message Decrypted Successfully. \n");
-  // Be cautious with %s if the decrypted data might not be null-terminated or
-  // is binary printf("The decrypted string is: %.*s\n", tempCbDecryptedBlob,
-  // (char*)*pbDecryptedBlob);
-
-  // DO NOT free pbEncryptedBlob here - it's managed by Go
-  // The caller (Go) is responsible for freeing pbEncryptedBlob
-  // The caller (Go) is also responsible for freeing *pbDecryptedBlob after use
 
   return 0;
 }
@@ -540,7 +533,7 @@ void clear_certificates() {
 //
 // NOTE: Helper functions implementations
 //
-const char *GetHashOid(PCCERT_CONTEXT pCert) {
+static const char *GetHashOid(PCCERT_CONTEXT pCert) {
   const char *pKeyAlg =
       pCert->pCertInfo->SubjectPublicKeyInfo.Algorithm.pszObjId;
 
@@ -554,7 +547,7 @@ const char *GetHashOid(PCCERT_CONTEXT pCert) {
   return NULL;
 }
 
-void HandleError(const char *s) {
+static void HandleError(const char *s) {
   printf("An error occurred in running the program.\n");
   printf("%s\n", s);
   DWORD err = GetLastError();
@@ -563,7 +556,7 @@ void HandleError(const char *s) {
   exit(1);
 }
 
-void GetCertDName(PCERT_NAME_BLOB pNameBlob, char **pszName) {
+static void GetCertDName(PCERT_NAME_BLOB pNameBlob, char **pszName) {
   DWORD cbName;
 
   cbName =
@@ -588,4 +581,21 @@ static PCCERT_CONTEXT get_cert_by_id_internal(uint8_t idx) {
     return NULL;
   }
   return certificates[idx];
+}
+
+static char *wide_to_utf8(const wchar_t *wide_str) {
+  if (!wide_str)
+    return NULL;
+
+  int utf8_len =
+      WideCharToMultiByte(CP_UTF8, 0, wide_str, -1, NULL, 0, NULL, NULL);
+  if (utf8_len <= 0)
+    return NULL;
+
+  char *utf8_str = (char *)malloc(utf8_len);
+  if (!utf8_str)
+    return NULL;
+
+  WideCharToMultiByte(CP_UTF8, 0, wide_str, -1, utf8_str, utf8_len, NULL, NULL);
+  return utf8_str;
 }

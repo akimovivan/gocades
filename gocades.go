@@ -298,7 +298,6 @@ func (s *Signer) GetCertificateByIndex(idx int) (*CertInfo, error) {
 		certInfo.SerialNumber = serialBytes
 	}
 
-	// Convert subject name
 	if cCertInfo.subject_name != nil && cCertInfo.subject_length > 0 {
 		subjectBytes := C.GoBytes(unsafe.Pointer(cCertInfo.subject_name), C.int(cCertInfo.subject_length))
 		certInfo.SubjectName = string(subjectBytes)
