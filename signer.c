@@ -6,16 +6,25 @@
 #include <string.h>
 #include <wchar.h>
 
-// helper function (not exported)
-PCCERT_CONTEXT GetRecipientCert(HCERTSTORE hCertStore, wchar_t *pSubject);
-const char *GetHashOid(PCCERT_CONTEXT pCert);
-SIGNER_ERR get_cert_info(PCCERT_CONTEXT pCertContext, GoCertInfo *cert_info);
-void HandleError(const char *s);
-PCCERT_CONTEXT GetRecipientCertExchange(HCERTSTORE hCertStore);
+//
+// NOTE: Helper functions definitions (not exported)
+//
+static PCCERT_CONTEXT GetRecipientCert(HCERTSTORE hCertStore,
+                                       wchar_t *pSubject);
+static const char *GetHashOid(PCCERT_CONTEXT pCert);
+static SIGNER_ERR get_cert_info(PCCERT_CONTEXT pCertContext,
+                                GoCertInfo *cert_info);
+static void HandleError(const char *s);
+static PCCERT_CONTEXT GetRecipientCertExchange(HCERTSTORE hCertStore);
 static BOOL isGostType(DWORD dwProvType) { return IS_GOST_PROV(dwProvType); }
 static void GetCertDName(PCERT_NAME_BLOB pNameBlob, char **pszName);
 
-// main functions
+static PCCERT_CONTEXT *certificates = NULL;
+static int cert_count = 0;
+
+//
+// NOTE: library func
+//
 SIGNER_ERR sign_simple(const unsigned char *data, DWORD data_size,
                        unsigned char **signed_data, DWORD *signed_data_size) {
   HCERTSTORE hStoreHandle = NULL;
@@ -28,7 +37,7 @@ SIGNER_ERR sign_simple(const unsigned char *data, DWORD data_size,
   *signed_data = NULL;
   *signed_data_size = 0;
 
-  hStoreHandle = CertOpenSystemStore(0, _TEXT("MY"));
+  hStoreHandle = CertOpenSystemStore(0, "MY");
   if (!hStoreHandle) {
     printf("Store handle was not got\n");
     return ERR_OPEN_STORE;
@@ -392,7 +401,7 @@ int decrypt(unsigned char *pbEncryptedBlob, unsigned int cbEncryptedBlob,
 
   CRYPT_DECRYPT_MESSAGE_PARA decryptParams;
 
-if (!CryptAcquireContext(
+  if (!CryptAcquireContext(
           &hCryptProv, // Адрес возврашаемого дескриптора.
           0,    // Используется имя текущего зарегестрированного пользователя.
           NULL, // Используется провайдер по умолчанию.
@@ -416,8 +425,7 @@ if (!CryptAcquireContext(
   decryptParams.cbSize = sizeof(CRYPT_DECRYPT_MESSAGE_PARA);
   decryptParams.dwMsgAndCertEncodingType = MY_ENCODING_TYPE;
   decryptParams.cCertStore = 1;
-  decryptParams.rghCertStore =
-      &hStoreHandle;
+  decryptParams.rghCertStore = &hStoreHandle;
 
   DWORD tempCbDecryptedBlob = 0; // Use a temp variable for the size
   if (!CryptDecryptMessage(&decryptParams, pbEncryptedBlob, cbEncryptedBlob,
@@ -461,6 +469,92 @@ if (!CryptAcquireContext(
   return 0;
 }
 
+int count_certificates() {
+  return cert_count;
+}
+
+SIGNER_ERR initialize_certificates() {
+  cert_count = 0;
+  certificates = malloc(sizeof(PCCERT_CONTEXT));
+
+  HCERTSTORE hCertStore = CertOpenSystemStore(0, _TEXT("MY"));
+  if (!hCertStore) {
+    printf("Failed to open certificate store");
+    return ERR_OPEN_STORE;
+  }
+
+  PCCERT_CONTEXT pCertContext = NULL;
+  DWORD dwSize = 0;
+  CRYPT_KEY_PROV_INFO *pKeyInfo = NULL;
+
+  while ((pCertContext = CertFindCertificateInStore(
+              hCertStore, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0,
+              CERT_FIND_ANY, 0, pCertContext))) {
+    int mustFree = 0;
+    DWORD dwKeySpec = 0;
+    HCRYPTPROV hProv = 0;
+    if (CryptAcquireCertificatePrivateKey(pCertContext, 0, 0, &hProv,
+                                          &dwKeySpec, &mustFree)) {
+      dwSize = 0;
+      if (CertGetCertificateContextProperty(
+              pCertContext, CERT_KEY_PROV_INFO_PROP_ID, 0, &dwSize)) {
+        pKeyInfo = (CRYPT_KEY_PROV_INFO *)malloc(dwSize);
+        if (pKeyInfo) {
+          if (CertGetCertificateContextProperty(pCertContext,
+                                                CERT_KEY_PROV_INFO_PROP_ID,
+                                                pKeyInfo, &dwSize)) {
+            // Reallocate to make room for one more certificate
+            PCCERT_CONTEXT *temp = realloc(certificates, 
+                                          (cert_count + 1) * sizeof(PCCERT_CONTEXT));
+            if (temp == NULL) {
+              // realloc failed, free the old pointer and clean up
+              free(certificates);
+              certificates = NULL;
+              free(pKeyInfo);
+              if (mustFree && hProv) {
+                CryptReleaseContext(hProv, 0);
+              }
+              CertCloseStore(hCertStore, 0);
+              return FAILURE; // or appropriate error code
+            }
+            certificates = temp;
+            
+            // Duplicate the certificate context so it remains valid after store is closed
+            certificates[cert_count] = CertDuplicateCertificateContext(pCertContext);
+            if (certificates[cert_count] != NULL) {
+              cert_count++;
+            }
+          }
+          free(pKeyInfo);
+          pKeyInfo = NULL;
+        }
+      }
+
+      if (mustFree && hProv)
+        CryptReleaseContext(hProv, 0);
+    }
+    // If CryptAcquireCertificatePrivateKey fails, continue to next cert
+  }
+
+  CertCloseStore(hCertStore, 0);
+
+  if (cert_count == 0) {
+    free(certificates);
+  }
+
+  return SUCCESS;
+}
+
+SIGNER_ERR get_certificate_by_id(int id, GoCertInfo *cert_info) {
+  if (id > cert_count - 1) {
+    return FAILURE;
+  }
+  return get_cert_info(certificates[id], cert_info);
+}
+
+//
+// NOTE: Helper functions implementations
+//
 PCCERT_CONTEXT GetRecipientCert(HCERTSTORE hCertStore, wchar_t *pSubject) {
   wchar_t *subject = pSubject;
   PCCERT_CONTEXT pCertContext = NULL;
@@ -650,6 +744,8 @@ void GetCertDName(PCERT_NAME_BLOB pNameBlob, char **pszName) {
   if (cbName == 1)
     HandleError("CertNameToStr(pbData)");
 }
+
+// left it here for testing directly in c
 // int main() {
 //   const unsigned char *data = (const unsigned char *)"sas velik";
 //   DWORD data_size = (DWORD)strlen((const char *)data);
@@ -702,5 +798,36 @@ void GetCertDName(PCERT_NAME_BLOB pNameBlob, char **pszName) {
 //   // }
 //   // fclose(fptr);
 //   // free(signed_data);
+//   return 0;
+// }
+
+// int main() {
+//   SIGNER_ERR err = initialize_certificates();
+//   if (err != SUCCESS) {
+//     fprintf(stderr, "failed to initialize certificates\n");
+//     return 1;
+//   }
+//
+//   GoCertInfo *cert_info = (GoCertInfo *)malloc(sizeof(GoCertInfo));
+//   if (!cert_info) {
+//     fprintf(stderr, "failed to allocate memory for cert_info\n");
+//     return 1;
+//   }
+//
+//   // Initialize the structure to zero
+//   memset(cert_info, 0, sizeof(GoCertInfo));
+//
+//   err = get_cert_info(certificates[0], cert_info);
+//   if (err != SUCCESS) {
+//     fprintf(stderr, "failed to get certificate info\n");
+//     return 2;
+//   }
+//
+//   printf("Certificate info:\n\tcert_len: %d\n\tsubject_name: %s\n",
+//          cert_info->cert_length, cert_info->subject_name);
+//
+//   free(certificates);
+//   free(cert_info);
+//
 //   return 0;
 // }

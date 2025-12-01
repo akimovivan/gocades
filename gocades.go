@@ -204,10 +204,7 @@ func (s *Signer) Decrypt(data []byte) ([]byte, error) {
 	var cDecryptedData *C.uchar
 	var decryptedDataLen C.uint
 
-	slog.Info("datalen", "len", len(data))
-	slog.Info("before decrypt")
 	result := C.decrypt(cData, dataLen, &cDecryptedData, &decryptedDataLen)
-	slog.Info("after decrypt")
 	if int(result) != 0 {
 		slog.Error(fmt.Sprintf("failed to execute with code %d", int(result)))
 		return nil, errors.New("failed to decrypt")
@@ -217,7 +214,6 @@ func (s *Signer) Decrypt(data []byte) ([]byte, error) {
 	if cDecryptedData == nil || decryptedDataLen <= 0 {
 		return nil, errors.New("no signed data returned")
 	}
-	slog.Debug("sas")
 
 	defer C.free(unsafe.Pointer(cDecryptedData))
 
@@ -227,4 +223,62 @@ func (s *Signer) Decrypt(data []byte) ([]byte, error) {
 	copy(decryptedMessage, decryptedData)
 
 	return decryptedMessage, nil
+}
+
+func (s *Signer) CountCertificates() int {
+	count := C.count_certificates()
+	return int(count)
+}
+
+func (s *Signer) InitializeCertificates() error {
+	result := C.initialize_certificates()
+	if result != C.SUCCESS {
+		return fmt.Errorf("failed with code %d", int(result))
+	}
+
+	return nil
+}
+
+func (s *Signer) GetCertificateByIndex(idx uint) (*CertInfo, error) {
+	var cCertInfo C.GoCertInfo
+	defer s.freeCertInfo(&cCertInfo)
+
+	result := C.get_certificate_by_id(C.int(idx), &cCertInfo)
+
+	fmt.Printf("len of cCertInfo: %d\n", cCertInfo.cert_length)
+
+	if result != C.SUCCESS {
+		return nil, errors.New("failed to verify signature")
+	}
+
+	var certInfo CertInfo
+
+	if cCertInfo.cert_data != nil && cCertInfo.cert_length > 0 {
+		certData := C.GoBytes(unsafe.Pointer(cCertInfo.cert_data), C.int(cCertInfo.cert_length))
+		certInfo.CertData = certData
+		certInfo.CertLength = uint32(cCertInfo.cert_length)
+	}
+
+	if cCertInfo.serial_number != nil && cCertInfo.serial_length > 0 {
+		serialBytes := C.GoBytes(unsafe.Pointer(cCertInfo.serial_number), C.int(cCertInfo.serial_length))
+		certInfo.SerialNumber = serialBytes
+	}
+
+	// Convert subject name
+	if cCertInfo.subject_name != nil && cCertInfo.subject_length > 0 {
+		subjectBytes := C.GoBytes(unsafe.Pointer(cCertInfo.subject_name), C.int(cCertInfo.subject_length))
+		certInfo.SubjectName = string(subjectBytes)
+		certInfo.SubjectLength = uint32(cCertInfo.subject_length)
+	}
+
+	if cCertInfo.signing_algo != nil && cCertInfo.algo_length > 0 {
+		algoBytes := C.GoBytes(unsafe.Pointer(cCertInfo.signing_algo), C.int(cCertInfo.algo_length))
+		certInfo.SigningAlgorithm = string(algoBytes)
+		//certInfo.SubjectLength = uint32(cCertInfo.subject_length)
+	}
+
+	certInfo.HasPrivateKey = cCertInfo.has_private_key != 0
+
+	return &certInfo, nil
+
 }

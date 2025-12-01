@@ -1,6 +1,7 @@
 package gocades
 
 import (
+	"encoding/hex"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -41,4 +42,25 @@ func TestEncryption(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, data, decryptedData)
+}
+
+func TestCertificatesHandling(t *testing.T) {
+	signer := NewSigner()
+
+	count := signer.CountCertificates()
+	assert.Equal(t, 0, count)
+
+	err := signer.InitializeCertificates()
+	require.NoError(t, err)
+
+	count = signer.CountCertificates()
+	assert.NotEqual(t, 0, count)
+
+	t.Logf("Counted %d certificates", count)
+
+	cert_info, err := signer.GetCertificateByIndex(0)
+	require.NoError(t, err)
+
+	t.Logf("Certificate is subj: %s serial: %s", cert_info.SubjectName, hex.EncodeToString(cert_info.SerialNumber))
+
 }

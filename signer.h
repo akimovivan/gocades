@@ -49,6 +49,18 @@ int encrypt(unsigned char *pbContent, int cbContent,
 int decrypt(unsigned char *pbEncryptedBlob, unsigned int cbEncryptedBlob,
             unsigned char **pbDecryptedBlob,
             unsigned int *out_len); 
+
+
+// initialize_certificates populates static array of pointers to PCCERT_CONTEXT
+// with privateKey
+SIGNER_ERR initialize_certificates();
+
+// count_certificates return amount of found certificates with private key
+// should be used only after initialization
+int count_certificates();
+
+SIGNER_ERR get_certificate_by_id(int id, GoCertInfo *cert_info);
+
 #ifdef __cplusplus
 }
 #endif
