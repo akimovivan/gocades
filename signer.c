@@ -1,6 +1,4 @@
 #include "signer.h"
-#include "CSP_WinCrypt.h"
-#include "reader/tchar.h"
 #include <stdint.h>
 #ifdef _WIN32
   #include "WinCryptEx.h"
@@ -392,9 +390,9 @@ int encrypt(unsigned char *pbContent, DWORD cbContent,
   return 0;
 }
 
-int decrypt(unsigned char *pbEncryptedBlob, unsigned int cbEncryptedBlob,
+int decrypt(unsigned char *pbEncryptedBlob, DWORD cbEncryptedBlob,
             unsigned char **pbDecryptedBlob,
-            unsigned int *out_len) { // Changed cbDecryptedBlob to pointer
+            DWORD *out_len) { // Changed cbDecryptedBlob to pointer
 
   HCRYPTPROV hCryptProv = 0;
   HCERTSTORE hStoreHandle = 0; // This handle needs to be valid for decryption

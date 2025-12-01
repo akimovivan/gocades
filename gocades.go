@@ -6,8 +6,8 @@ package gocades
 /*
 #cgo windows CFLAGS: -Wall -Wno-unknown-pragmas -Wno-maybe-uninitialized -IC:/PROGRA~2/CRYPTO~1/SDK/include
 #cgo windows LDFLAGS: -LC:/PROGRA~2/CRYPTO~1/SDK/lib/amd64 -lcades -lcpasn1 -lcplib -ladvapi32 -lcrypt32
-#cgo CFLAGS: -Wall -DUNIX -I/opt/cprocsp/include/pki -I/opt/cprocsp/include/cpcsp -I/opt/cprocsp/include
-#cgo LDFLAGS: -L/opt/cprocsp/lib/amd64 -lcades -lcapi20 -lcapi10 -lrdrsup
+#cgo linux CFLAGS: -Wall -DUNIX -I/opt/cprocsp/include/pki -I/opt/cprocsp/include/cpcsp -I/opt/cprocsp/include
+#cgo linux LDFLAGS: -L/opt/cprocsp/lib/amd64 -lcades -lcapi20 -lcapi10 -lrdrsup
 #include "signer.h"
 #include <string.h>
 */
@@ -211,10 +211,10 @@ func (s *Signer) Decrypt(data []byte) ([]byte, error) {
 	}
 
 	cData := (*C.uchar)(unsafe.Pointer(&data[0]))
-	dataLen := C.uint(len(data))
+	dataLen := C.DWORD(len(data))
 
 	var cDecryptedData *C.uchar
-	var decryptedDataLen C.uint
+	var decryptedDataLen C.DWORD
 
 	result := C.decrypt(cData, dataLen, &cDecryptedData, &decryptedDataLen)
 	if int(result) != 0 {
