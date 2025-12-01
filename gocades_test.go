@@ -8,7 +8,7 @@ import (
 )
 
 func TestSigning(t *testing.T) {
-	signer := NewSigner()
+	signer := NewSigner(nil)
 
 	data := []byte("Hello world")
 
@@ -31,7 +31,7 @@ func TestSigning(t *testing.T) {
 }
 
 func TestEncryption(t *testing.T) {
-	signer := NewSigner()
+	signer := NewSigner(nil)
 
 	data := []byte("Hello world")
 
@@ -45,7 +45,7 @@ func TestEncryption(t *testing.T) {
 }
 
 func TestCertificatesHandling(t *testing.T) {
-	signer := NewSigner()
+	signer := NewSigner(nil)
 
 	count := signer.CountCertificates()
 	assert.Equal(t, 0, count)
@@ -62,5 +62,4 @@ func TestCertificatesHandling(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Logf("Certificate is subj: %s serial: %s", cert_info.SubjectName, hex.EncodeToString(cert_info.SerialNumber))
-
 }

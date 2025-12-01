@@ -545,11 +545,24 @@ SIGNER_ERR initialize_certificates() {
   return SUCCESS;
 }
 
-SIGNER_ERR get_certificate_by_id(int id, GoCertInfo *cert_info) {
-  if (id > cert_count - 1) {
+SIGNER_ERR get_certificate_by_id(int idx, GoCertInfo *cert_info) {
+  if (idx < 0 || idx >= cert_count) {
     return FAILURE;
   }
-  return get_cert_info(certificates[id], cert_info);
+  return get_cert_info(certificates[idx], cert_info);
+}
+
+void clear_certificates() {
+  if (certificates) {
+    for (int i = 0; i < cert_count; i++) {
+      if (certificates[i]) {
+        CertFreeCertificateContext(certificates[i]);
+      }
+    }
+    free(certificates);
+    certificates = NULL;
+    cert_count = 0;
+  }
 }
 
 //

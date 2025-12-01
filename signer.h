@@ -55,6 +55,9 @@ int decrypt(unsigned char *pbEncryptedBlob, unsigned int cbEncryptedBlob,
 // with privateKey
 SIGNER_ERR initialize_certificates();
 
+// clear_certificates frees memory that is populated by certificates
+void clear_certificates();
+
 // count_certificates return amount of found certificates with private key
 // should be used only after initialization
 int count_certificates();

@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"runtime"
 	"unsafe"
 )
 
@@ -25,12 +26,14 @@ type CertInfo struct {
 	HasPrivateKey    bool
 	SerialNumber     []byte // hex encoded value
 	SigningAlgorithm string
-	Idx              int // Id of this certificate in c++ static array
+	Idx              int // Id of this certificate in c static array
 }
 
 // Signer provides cryptographic signing functionality using CryptoPro CAdES
 type Signer struct {
-	opts *Options
+	opts         *Options
+	initialized  bool
+	Certificates []CertInfo
 }
 
 type Options struct {
@@ -45,17 +48,14 @@ func DefaultOptions() *Options {
 	}
 }
 
-func NewSigner() *Signer {
-	return &Signer{
-		opts: DefaultOptions(),
-	}
-}
-
-func NewSignerWithOptions(opts *Options) *Signer {
+func NewSigner(opts *Options) *Signer {
 	if opts == nil {
 		opts = DefaultOptions()
 	}
-	return &Signer{opts: opts}
+
+	signer := &Signer{opts: opts, initialized: false}
+	runtime.SetFinalizer(signer, (*Signer).clearCertificates)
+	return signer
 }
 
 func (s *Signer) Sign(data []byte) ([]byte, error) {
@@ -235,6 +235,7 @@ func (s *Signer) InitializeCertificates() error {
 	if result != C.SUCCESS {
 		return fmt.Errorf("failed with code %d", int(result))
 	}
+	s.initialized = true
 
 	return nil
 }
@@ -280,5 +281,10 @@ func (s *Signer) GetCertificateByIndex(idx uint) (*CertInfo, error) {
 	certInfo.HasPrivateKey = cCertInfo.has_private_key != 0
 
 	return &certInfo, nil
+}
 
+func (s *Signer) clearCertificates() {
+	if s.initialized {
+		C.clear_certificates()
+	}
 }
