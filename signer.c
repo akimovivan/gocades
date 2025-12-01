@@ -22,49 +22,41 @@ static void GetCertDName(PCERT_NAME_BLOB pNameBlob, char **pszName);
 
 static PCCERT_CONTEXT *certificates = NULL;
 static uint8_t cert_count = 0;
+static PCCERT_CONTEXT get_cert_by_id_internal(uint8_t idx);
 
 //
 // NOTE: library func
 //
 SIGNER_ERR sign_simple(const unsigned char *data, DWORD data_size,
-                       unsigned char **signed_data, DWORD *signed_data_size) {
+                       unsigned char **signed_data, DWORD *signed_data_size,
+                       uint8_t cert_idx) {
   HCERTSTORE hStoreHandle = NULL;
   PCCERT_CONTEXT context = NULL;
   PCCERT_CHAIN_CONTEXT pChainContext = NULL;
   PCRYPT_DATA_BLOB pSignedMessage = NULL;
   int result = -1;
 
-  // Initialize output parameters
   *signed_data = NULL;
   *signed_data_size = 0;
 
   hStoreHandle = CertOpenSystemStore(0, "MY");
   if (!hStoreHandle) {
-    printf("Store handle was not got\n");
     return ERR_OPEN_STORE;
   }
 
   wchar_t *wa = NULL;
-  context = GetRecipientCert(hStoreHandle, wa);
+  context = get_cert_by_id_internal(cert_idx);
   if (wa)
     free(wa);
 
   if (!context) {
-    printf("There is no certificate with a CERT_KEY_CONTEXT_PROP_ID\n"
-           "property and an AT_KEYEXCHANGE private key available.\n"
-           "While the message could be sign, in this case, it could\n"
-           "not be verify in this program.\n"
-           "For more information, read the documentation "
-           "http://cpdn.cryptopro.ru/\n");
     CertCloseStore(hStoreHandle, 0);
-    return ERR_OPEN_STORE;
+    return ERR_OPEN_STORE; /* TODO: update error message */
   }
 
-  // Allocate and initialize sign parameters
   CRYPT_SIGN_MESSAGE_PARA *signPara =
       (CRYPT_SIGN_MESSAGE_PARA *)malloc(sizeof(CRYPT_SIGN_MESSAGE_PARA));
   if (!signPara) {
-    printf("Memory allocation failed\n");
     goto cleanup;
   }
   ZeroMemory(signPara, sizeof(CRYPT_SIGN_MESSAGE_PARA));
@@ -469,9 +461,7 @@ int decrypt(unsigned char *pbEncryptedBlob, unsigned int cbEncryptedBlob,
   return 0;
 }
 
-uint8_t count_certificates() {
-  return cert_count;
-}
+uint8_t count_certificates() { return cert_count; }
 
 SIGNER_ERR initialize_certificates() {
   cert_count = 0;
@@ -504,8 +494,8 @@ SIGNER_ERR initialize_certificates() {
                                                 CERT_KEY_PROV_INFO_PROP_ID,
                                                 pKeyInfo, &dwSize)) {
             // Reallocate to make room for one more certificate
-            PCCERT_CONTEXT *temp = realloc(certificates, 
-                                          (cert_count + 1) * sizeof(PCCERT_CONTEXT));
+            PCCERT_CONTEXT *temp = realloc(
+                certificates, (cert_count + 1) * sizeof(PCCERT_CONTEXT));
             if (temp == NULL) {
               // realloc failed, free the old pointer and clean up
               free(certificates);
@@ -518,9 +508,11 @@ SIGNER_ERR initialize_certificates() {
               return FAILURE; // or appropriate error code
             }
             certificates = temp;
-            
-            // Duplicate the certificate context so it remains valid after store is closed
-            certificates[cert_count] = CertDuplicateCertificateContext(pCertContext);
+
+            // Duplicate the certificate context so it remains valid after store
+            // is closed
+            certificates[cert_count] =
+                CertDuplicateCertificateContext(pCertContext);
             if (certificates[cert_count] != NULL) {
               cert_count++;
             }
@@ -756,6 +748,13 @@ void GetCertDName(PCERT_NAME_BLOB pNameBlob, char **pszName) {
                           *pszName, cbName);
   if (cbName == 1)
     HandleError("CertNameToStr(pbData)");
+}
+
+static PCCERT_CONTEXT get_cert_by_id_internal(uint8_t idx) {
+  if (idx < 0 || idx >= cert_count) {
+    return NULL;
+  }
+  return certificates[idx];
 }
 
 // left it here for testing directly in c

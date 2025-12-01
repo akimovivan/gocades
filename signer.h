@@ -36,7 +36,8 @@ extern "C" {
 #endif
 
 SIGNER_ERR sign_simple(const unsigned char *data, DWORD data_size,
-                       unsigned char **signed_data, DWORD *signed_data_size);
+                       unsigned char **signed_data, DWORD *signed_data_size,
+                       uint8_t cert_idx);
 
 SIGNER_ERR verify_signature(const unsigned char *signed_data,
                             DWORD signed_data_size, GoCertInfo *cert_info,

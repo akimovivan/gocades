@@ -34,6 +34,7 @@ type Signer struct {
 	opts         *Options
 	initialized  bool
 	Certificates []CertInfo
+	SelectedCert int
 }
 
 type Options struct {
@@ -63,13 +64,22 @@ func (s *Signer) Sign(data []byte) ([]byte, error) {
 		return nil, errors.New("input data is empty")
 	}
 
+	if !s.initialized {
+		return nil, errors.New("certificates are not initialized")
+	}
+
+	if len(s.Certificates) == 0 {
+		return nil, errors.New("no valid certificates")
+	}
+
 	cData := (*C.uchar)(unsafe.Pointer(&data[0]))
 	dataLen := C.DWORD(len(data))
+	certIdx := C.uint8_t(s.SelectedCert)
 
 	var cSignedData *C.uchar
 	var signedDataLen C.DWORD
 
-	result := C.sign_simple(cData, dataLen, &cSignedData, &signedDataLen)
+	result := C.sign_simple(cData, dataLen, &cSignedData, &signedDataLen, certIdx)
 
 	if int(result) != 0 {
 		return nil, errors.New("signing failed")
