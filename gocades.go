@@ -147,7 +147,7 @@ func (s *Signer) Verify(data []byte) (bool, *CertInfo, error) {
 	if cCertInfo.signing_algo != nil && cCertInfo.algo_length > 0 {
 		algoBytes := C.GoBytes(unsafe.Pointer(cCertInfo.signing_algo), C.int(cCertInfo.algo_length))
 		certInfo.SigningAlgorithm = string(algoBytes)
-		//certInfo.SubjectLength = uint32(cCertInfo.subject_length)
+		certInfo.SubjectLength = uint32(cCertInfo.subject_length)
 	}
 
 	certInfo.HasPrivateKey = cCertInfo.has_private_key != 0
@@ -179,13 +179,21 @@ func (s *Signer) Encrypt(data []byte) ([]byte, error) {
 		return nil, errors.New("input data is empty")
 	}
 
+	if !s.initialized {
+		return nil, errors.New("certificates are not initialized")
+	}
+
+	if len(s.Certificates) == 0 {
+		return nil, errors.New("no valid certificates")
+	}
+
 	cData := (*C.uchar)(unsafe.Pointer(&data[0]))
 	dataLen := C.DWORD(len(data))
 
 	var cEncrypteddData *C.uchar
 	var encryptedDataLen C.DWORD
 
-	result := C.encrypt(cData, dataLen, &cEncrypteddData, &encryptedDataLen)
+	result := C.encrypt(cData, dataLen, &cEncrypteddData, &encryptedDataLen, C.uint8_t(s.SelectedCert))
 
 	if int(result) != 0 {
 		return nil, errors.New("signing failed")

@@ -43,6 +43,12 @@ func TestEncryption(t *testing.T) {
 	data := []byte("Hello world")
 
 	encryptedData, err := signer.Encrypt(data)
+	require.Error(t, err)
+
+	err = signer.InitializeCertificates()
+	require.NoError(t, err)
+
+	encryptedData, err = signer.Encrypt(data)
 	require.NoError(t, err)
 
 	decryptedData, err := signer.Decrypt(encryptedData)
