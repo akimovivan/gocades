@@ -2,6 +2,8 @@
 #include "CSP_WinCrypt.h"
 #include "reader/tchar.h"
 #include <stdint.h>
+#include "WinCryptEx.h"
+#include <tchar.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -361,7 +363,7 @@ int encrypt(unsigned char *pbContent, DWORD cbContent,
                            cbContent, NULL, &cbEncryptedBlob)) {
     HandleError("Getting EncrypBlob size failed.");
   }
-  printf("The encrypted message is %d bytes. \n", cbEncryptedBlob);
+  printf("The encrypted message is %lu bytes. \n", cbEncryptedBlob);
   *out_len = cbEncryptedBlob;
 
   // Распределение памяти под возвращаемый BLOB.
@@ -425,7 +427,7 @@ int decrypt(unsigned char *pbEncryptedBlob, unsigned int cbEncryptedBlob,
     HandleError("Error getting decrypted message size");
     return -1;
   }
-  printf("The size for the decrypted message is: %u.\n", tempCbDecryptedBlob);
+  printf("The size for the decrypted message is: %lu.\n", tempCbDecryptedBlob);
 
   // Allocate memory for the decrypted data in C
   *pbDecryptedBlob = (BYTE *)malloc(tempCbDecryptedBlob);
@@ -641,7 +643,7 @@ void HandleError(const char *s) {
   printf("An error occurred in running the program.\n");
   printf("%s\n", s);
   DWORD err = GetLastError();
-  printf("Error number %x\n.", err);
+  printf("Error number %lx\n.", err);
   printf("Program terminating.\n");
   exit(1);
 }

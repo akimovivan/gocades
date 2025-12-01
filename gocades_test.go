@@ -2,9 +2,10 @@ package gocades
 
 import (
 	"encoding/hex"
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 // WARNING: requires at least one installed certificate in CryptoPro with
