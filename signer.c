@@ -2,8 +2,14 @@
 #include "CSP_WinCrypt.h"
 #include "reader/tchar.h"
 #include <stdint.h>
-#include "WinCryptEx.h"
-#include <tchar.h>
+#ifdef _WIN32
+  #include "WinCryptEx.h"
+  #include <tchar.h>
+#else
+  #include <CSP_WinCrypt.h>
+  #include <reader/tchar.h>
+#endif // headers
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
