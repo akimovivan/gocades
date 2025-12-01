@@ -1,2 +1,5 @@
 gocades
 main
+signer.o
+resources.o
+main.exe

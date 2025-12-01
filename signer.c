@@ -1,3 +1,4 @@
+#define ISOLATION_AWARE_ENABLED 1
 #include "signer.h"
 #include <stdint.h>
 #ifdef _WIN32
@@ -16,8 +17,8 @@
 //
 // NOTE: Helper functions definitions (not exported)
 //
-static PCCERT_CONTEXT GetRecipientCert(HCERTSTORE hCertStore,
-                                       wchar_t *pSubject);
+// static PCCERT_CONTEXT GetRecipientCert(HCERTSTORE hCertStore,
+//                                        wchar_t *pSubject);
 static const char *GetHashOid(PCCERT_CONTEXT pCert);
 static SIGNER_ERR get_cert_info(PCCERT_CONTEXT pCertContext,
                                 GoCertInfo *cert_info);
@@ -312,7 +313,7 @@ int encrypt(unsigned char *pbContent, DWORD cbContent,
   DWORD cbEncryptedBlob;
 
   printf("source message: %s\n", pbContent);
-  printf("message length: %d bytes \n", cbContent);
+  printf("message length: %ld bytes \n", cbContent);
 
   // Получение дескриптора криптографического провайдера.
   if (!CryptAcquireContext(
@@ -566,68 +567,68 @@ void clear_certificates() {
 //
 // NOTE: Helper functions implementations
 //
-PCCERT_CONTEXT GetRecipientCert(HCERTSTORE hCertStore, wchar_t *pSubject) {
-  wchar_t *subject = pSubject;
-  PCCERT_CONTEXT pCertContext = NULL;
-  DWORD dwSize = 0;
-  CRYPT_KEY_PROV_INFO *pKeyInfo = NULL;
-  int mustFree;
-  DWORD dwKeySpec = 0;
-  HCRYPTPROV hProv;
+// PCCERT_CONTEXT GetRecipientCert(HCERTSTORE hCertStore, wchar_t *pSubject) {
+//   wchar_t *subject = pSubject;
+//   PCCERT_CONTEXT pCertContext = NULL;
+//   DWORD dwSize = 0;
+//   CRYPT_KEY_PROV_INFO *pKeyInfo = NULL;
+//   int mustFree;
+//   DWORD dwKeySpec = 0;
+//   HCRYPTPROV hProv;
 
-  for (;;) {
-    if (subject) {
-      pCertContext = CertFindCertificateInStore(
-          hCertStore, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0,
-          CERT_FIND_SUBJECT_STR_W, subject, pCertContext);
-      if (pCertContext)
-        return pCertContext;
-    } else {
-      pCertContext = CertFindCertificateInStore(
-          hCertStore, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0, CERT_FIND_ANY,
-          NULL, pCertContext);
-    }
+//   for (;;) {
+//     if (subject) {
+//       pCertContext = CertFindCertificateInStore(
+//           hCertStore, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0,
+//           CERT_FIND_SUBJECT_STR_W, subject, pCertContext);
+//       if (pCertContext)
+//         return pCertContext;
+//     } else {
+//       pCertContext = CertFindCertificateInStore(
+//           hCertStore, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0, CERT_FIND_ANY,
+//           NULL, pCertContext);
+//     }
 
-    if (pCertContext) {
-      if (!CryptAcquireCertificatePrivateKey(pCertContext, 0, NULL, &hProv,
-                                             &dwKeySpec, &mustFree)) {
-        if (mustFree)
-          CryptReleaseContext(hProv, 0);
-        continue;
-      }
+//     if (pCertContext) {
+//       if (!CryptAcquireCertificatePrivateKey(pCertContext, 0, NULL, &hProv,
+//                                              &dwKeySpec, &mustFree)) {
+//         if (mustFree)
+//           CryptReleaseContext(hProv, 0);
+//         continue;
+//       }
 
-      if (!(CertGetCertificateContextProperty(
-              pCertContext, CERT_KEY_PROV_INFO_PROP_ID, NULL, &dwSize))) {
-        printf("Certificate property was not got\n");
-        return NULL;
-      }
+//       if (!(CertGetCertificateContextProperty(
+//               pCertContext, CERT_KEY_PROV_INFO_PROP_ID, NULL, &dwSize))) {
+//         printf("Certificate property was not got\n");
+//         return NULL;
+//       }
 
-      if (pKeyInfo)
-        free(pKeyInfo);
+//       if (pKeyInfo)
+//         free(pKeyInfo);
 
-      pKeyInfo = (CRYPT_KEY_PROV_INFO *)malloc(dwSize);
-      if (!pKeyInfo) {
-        printf("Error occurred during the time of memory allocating\n");
-        return NULL;
-      }
+//       pKeyInfo = (CRYPT_KEY_PROV_INFO *)malloc(dwSize);
+//       if (!pKeyInfo) {
+//         printf("Error occurred during the time of memory allocating\n");
+//         return NULL;
+//       }
 
-      if (!(CertGetCertificateContextProperty(
-              pCertContext, CERT_KEY_PROV_INFO_PROP_ID, pKeyInfo, &dwSize))) {
-        free(pKeyInfo);
-        printf("Certificate property was not got\n");
-        return NULL;
-      }
+//       if (!(CertGetCertificateContextProperty(
+//               pCertContext, CERT_KEY_PROV_INFO_PROP_ID, pKeyInfo, &dwSize))) {
+//         free(pKeyInfo);
+//         printf("Certificate property was not got\n");
+//         return NULL;
+//       }
 
-      if (mustFree)
-        CryptReleaseContext(hProv, 0);
-      free(pKeyInfo);
-      return pCertContext;
-    } else {
-      printf("Certificate with private key was not found\n");
-      return NULL;
-    }
-  }
-}
+//       if (mustFree)
+//         CryptReleaseContext(hProv, 0);
+//       free(pKeyInfo);
+//       return pCertContext;
+//     } else {
+//       printf("Certificate with private key was not found\n");
+//       return NULL;
+//     }
+//   }
+// }
 
 const char *GetHashOid(PCCERT_CONTEXT pCert) {
   const char *pKeyAlg =
@@ -774,31 +775,31 @@ static PCCERT_CONTEXT get_cert_by_id_internal(uint8_t idx) {
 //     fprintf(stderr, "failed to sign: %d\n", result);
 //     return 1;
 //   }
-//
+
 //   printf("signed successfully %lu\n", sizeof(signed_data));
-//
+
 //   GoCertInfo *cert_info = (GoCertInfo *)malloc(sizeof(GoCertInfo));
 //   if (!cert_info) {
 //     fprintf(stderr, "failed to allocate memory for cert_info\n");
 //     free(signed_data);
 //     return 1;
 //   }
-//
+
 //   // Initialize the structure to zero
 //   memset(cert_info, 0, sizeof(GoCertInfo));
 //   uint verification_status = 0;
-//
+
 //   verify_signature(signed_data, signed_data_size, cert_info,
 //                    &verification_status);
 //   if (verification_status != 0) {
 //     fprintf(stderr, "failed to verify signature: %d\n", verification_status);
 //     return 1;
 //   }
-//
+
 //   if (cert_info) {
 //     free(cert_info);
 //   }
-//
+
 //   printf("verified\n");
 //   // FILE *fptr = fopen("sign.dat", "w");
 //   // if (!fptr) {
@@ -819,33 +820,35 @@ static PCCERT_CONTEXT get_cert_by_id_internal(uint8_t idx) {
 //   return 0;
 // }
 
-// int main() {
-//   SIGNER_ERR err = initialize_certificates();
-//   if (err != SUCCESS) {
-//     fprintf(stderr, "failed to initialize certificates\n");
-//     return 1;
-//   }
-//
-//   GoCertInfo *cert_info = (GoCertInfo *)malloc(sizeof(GoCertInfo));
-//   if (!cert_info) {
-//     fprintf(stderr, "failed to allocate memory for cert_info\n");
-//     return 1;
-//   }
-//
-//   // Initialize the structure to zero
-//   memset(cert_info, 0, sizeof(GoCertInfo));
-//
-//   err = get_cert_info(certificates[0], cert_info);
-//   if (err != SUCCESS) {
-//     fprintf(stderr, "failed to get certificate info\n");
-//     return 2;
-//   }
-//
-//   printf("Certificate info:\n\tcert_len: %d\n\tsubject_name: %s\n",
-//          cert_info->cert_length, cert_info->subject_name);
-//
-//   free(certificates);
-//   free(cert_info);
-//
-//   return 0;
-// }
+int main() {
+  printf("TEEEEEESst\n");
+
+  SIGNER_ERR err = initialize_certificates();
+  if (err != SUCCESS) {
+    fprintf(stderr, "failed to initialize certificates\n");
+    return 1;
+  }
+
+  GoCertInfo *cert_info = (GoCertInfo *)malloc(sizeof(GoCertInfo));
+  if (!cert_info) {
+    fprintf(stderr, "failed to allocate memory for cert_info\n");
+    return 1;
+  }
+
+  // Initialize the structure to zero
+  memset(cert_info, 0, sizeof(GoCertInfo));
+
+  err = get_cert_info(certificates[0], cert_info);
+  if (err != SUCCESS) {
+    fprintf(stderr, "failed to get certificate info\n");
+    return 2;
+  }
+
+  printf("Certificate info:\n\tcert_len: %ld\n\tsubject_name: %s\n",
+         cert_info->cert_length, cert_info->subject_name);
+
+  free(certificates);
+  free(cert_info);
+
+  return 0;
+}
