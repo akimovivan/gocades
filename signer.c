@@ -1,5 +1,4 @@
 #include "signer.h"
-#include "CSP_WinDef.h"
 #include <stdint.h>
 #ifdef _WIN32
 #include "WinCryptEx.h"
@@ -23,7 +22,7 @@ static SIGNER_ERR get_cert_info(PCCERT_CONTEXT pCertContext,
 static void HandleError(const char *s);
 static BOOL isGostType(DWORD dwProvType) { return IS_GOST_PROV(dwProvType); }
 static void GetCertDName(PCERT_NAME_BLOB pNameBlob, char **pszName);
-static char *wide_to_utf8(const wchar_t *wide_str); 
+static char *wide_to_utf8(const wchar_t *wide_str);
 
 static PCCERT_CONTEXT *certificates = NULL;
 static uint8_t cert_count = 0;
