@@ -1,7 +1,13 @@
 #include "signer.h"
-#include "CSP_WinCrypt.h"
-#include "reader/tchar.h"
 #include <stdint.h>
+#ifdef _WIN32
+#include "WinCryptEx.h"
+#include <tchar.h>
+#else
+#include <CSP_WinCrypt.h>
+#include <reader/tchar.h>
+#endif // headers
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,15 +16,13 @@
 //
 // NOTE: Helper functions definitions (not exported)
 //
-static PCCERT_CONTEXT GetRecipientCert(HCERTSTORE hCertStore,
-                                       wchar_t *pSubject);
 static const char *GetHashOid(PCCERT_CONTEXT pCert);
 static SIGNER_ERR get_cert_info(PCCERT_CONTEXT pCertContext,
                                 GoCertInfo *cert_info);
 static void HandleError(const char *s);
-static PCCERT_CONTEXT GetRecipientCertExchange(HCERTSTORE hCertStore);
 static BOOL isGostType(DWORD dwProvType) { return IS_GOST_PROV(dwProvType); }
 static void GetCertDName(PCERT_NAME_BLOB pNameBlob, char **pszName);
+static char *wide_to_utf8(const wchar_t *wide_str);
 
 static PCCERT_CONTEXT *certificates = NULL;
 static uint8_t cert_count = 0;
@@ -224,9 +228,6 @@ SIGNER_ERR verify_signature(const unsigned char *signed_data,
 }
 
 SIGNER_ERR get_cert_info(PCCERT_CONTEXT pCertContext, GoCertInfo *cert_info) {
-  // memset(cert_info, 0, sizeof(GoCertInfo));
-
-  // Copy certificate data
   cert_info->cert_data = (unsigned char *)malloc(pCertContext->cbCertEncoded);
   if (cert_info->cert_data) {
     memcpy(cert_info->cert_data, pCertContext->pbCertEncoded,
@@ -236,7 +237,6 @@ SIGNER_ERR get_cert_info(PCCERT_CONTEXT pCertContext, GoCertInfo *cert_info) {
     return FAILURE;
   }
 
-  // Copy serial number
   cert_info->serial_number =
       (unsigned char *)malloc(pCertContext->pCertInfo->SerialNumber.cbData);
   if (cert_info->serial_number) {
@@ -248,20 +248,37 @@ SIGNER_ERR get_cert_info(PCCERT_CONTEXT pCertContext, GoCertInfo *cert_info) {
     return FAILURE;
   }
 
-  // Get subject name
   DWORD subject_len = CertGetNameStringA(
       pCertContext, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, NULL, NULL, 0);
 
+  // if (subject_len > 0) {
+  //   cert_info->subject_name =
+  //       (unsigned char *)malloc(subject_len); // Use char* for strings
+  //   if (cert_info->subject_name) {
+  //     CertGetNameStringA(pCertContext, CERT_NAME_FRIENDLY_DISPLAY_TYPE, 0,
+  //     NULL,
+  //                        (LPSTR)cert_info->subject_name, subject_len);
+  //     cert_info->subject_length = subject_len - 1;
+  //   } else {
+  //     return FAILURE;
+  //   }
+  // }
+
   if (subject_len > 0) {
-    cert_info->subject_name =
-        (unsigned char *)malloc(subject_len); // Use char* for strings
-    if (cert_info->subject_name) {
-      CertGetNameStringA(pCertContext, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, NULL,
-                         (LPSTR)cert_info->subject_name, subject_len);
-      cert_info->subject_length = subject_len - 1; // Exclude null terminator
-    } else {
-      return FAILURE;
+    wchar_t *wide_subject = (wchar_t *)malloc(subject_len * sizeof(wchar_t));
+    if (wide_subject) {
+      CertGetNameStringW(pCertContext, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, NULL,
+                         wide_subject, subject_len);
+
+      char *utf8_subject = wide_to_utf8(wide_subject);
+      if (utf8_subject) {
+        cert_info->subject_name = (unsigned char *)utf8_subject;
+        cert_info->subject_length = strlen(utf8_subject);
+      }
+      free(wide_subject);
     }
+  } else {
+    return FAILURE;
   }
 
   const char *oid = pCertContext->pCertInfo->SignatureAlgorithm.pszObjId;
@@ -292,9 +309,8 @@ SIGNER_ERR get_cert_info(PCCERT_CONTEXT pCertContext, GoCertInfo *cert_info) {
 }
 
 int encrypt(unsigned char *pbContent, DWORD cbContent,
-            unsigned char **pbEncryptedBlob, DWORD *out_len) {
+            unsigned char **pbEncryptedBlob, DWORD *out_len, uint8_t cert_idx) {
   HCRYPTPROV hCryptProv = 0;
-  HCERTSTORE hStoreHandle = 0;
   PCCERT_CONTEXT pRecipientCert = NULL;
   char *szDName = NULL;
   // DWORD cbContent = sizeof(*pbContent); // Длина сообщения, включая конечный
@@ -320,33 +336,15 @@ int encrypt(unsigned char *pbContent, DWORD cbContent,
   }
   printf("CSP has been acquired. \n");
 
-  // Открытие системного хранилища сертификатов.
-  hStoreHandle = CertOpenSystemStore(hCryptProv, "MY");
-
-  if (!hStoreHandle) {
-    HandleError("Error getting store handle.");
-  }
-  printf("The MY store is open. \n");
-
-  // Получение указателя на сертификат получателя с помощью
-  // функции GetRecipientCert.
-  pRecipientCert = GetRecipientCertExchange(hStoreHandle);
+  pRecipientCert = get_cert_by_id_internal(cert_idx);
 
   if (!pRecipientCert) {
-    printf("No certificate with a CERT_KEY_CONTEXT_PROP_ID \n");
-    printf("property and an AT_KEYEXCHANGE private key available. \n");
-    printf("While the message could be encrypted, in this case, \n");
-    printf("it could not be decrypted in this program. \n");
-    printf("For more information, see the documentation for \n");
-    printf("CryptEncryptMessage and CryptDecryptMessage.\n\n");
-    HandleError("No Certificate with AT_KEYEXCHANGE key in store.");
+    return -3;
   }
-  GetCertDName(&pRecipientCert->pCertInfo->Subject, &szDName);
-  printf("A recipient's certificate has been acquired: %s\n", szDName);
 
-  // Инициализация структуры с нулем.
-  memset(&EncryptAlgorithm, 0, sizeof(CRYPT_ALGORITHM_IDENTIFIER));
-  // EncryptAlgorithm.pszObjId = OID_CipherVar_Default;
+  GetCertDName(&pRecipientCert->pCertInfo->Subject, &szDName);
+
+  ZeroMemory(&EncryptAlgorithm, sizeof(CRYPT_ALGORITHM_IDENTIFIER));
   EncryptAlgorithm.pszObjId = (LPSTR)szOID_CP_GOST_28147;
 
   // Инициализация структуры CRYPT_ENCRYPT_MESSAGE_PARA.
@@ -359,23 +357,20 @@ int encrypt(unsigned char *pbContent, DWORD cbContent,
   // Вызов функции CryptEncryptMessage.
   if (!CryptEncryptMessage(&EncryptParams, 1, &pRecipientCert, pbContent,
                            cbContent, NULL, &cbEncryptedBlob)) {
-    HandleError("Getting EncrypBlob size failed.");
+    return -4;
   }
-  printf("The encrypted message is %d bytes. \n", cbEncryptedBlob);
   *out_len = cbEncryptedBlob;
 
-  // Распределение памяти под возвращаемый BLOB.
   *pbEncryptedBlob = (BYTE *)malloc(cbEncryptedBlob);
 
-  if (!pbEncryptedBlob)
-    HandleError("Memory allocation error while encrypting.");
+  if (!pbEncryptedBlob) {
+    return -5;
+  }
 
-  // Повторный вызов функции CryptEncryptMessage для зашифрования содержимого.
   if (!CryptEncryptMessage(&EncryptParams, 1, &pRecipientCert, pbContent,
                            cbContent, *pbEncryptedBlob, &cbEncryptedBlob)) {
-    HandleError("Encryption failed.");
+    return -6;
   }
-  printf("Encryption succeeded. \n");
 
   if (pRecipientCert) {
     CertFreeCertificateContext(pRecipientCert);
@@ -384,12 +379,10 @@ int encrypt(unsigned char *pbContent, DWORD cbContent,
   return 0;
 }
 
-int decrypt(unsigned char *pbEncryptedBlob, unsigned int cbEncryptedBlob,
-            unsigned char **pbDecryptedBlob,
-            unsigned int *out_len) { // Changed cbDecryptedBlob to pointer
-
+int decrypt(unsigned char *pbEncryptedBlob, DWORD cbEncryptedBlob,
+            unsigned char **pbDecryptedBlob, DWORD *out_len) {
   HCRYPTPROV hCryptProv = 0;
-  HCERTSTORE hStoreHandle = 0; // This handle needs to be valid for decryption
+  HCERTSTORE hStoreHandle = 0;
 
   CRYPT_DECRYPT_MESSAGE_PARA decryptParams;
 
@@ -412,51 +405,30 @@ int decrypt(unsigned char *pbEncryptedBlob, unsigned int cbEncryptedBlob,
   }
   printf("The MY store is open. \n");
 
-  // Initialize structure
-  memset(&decryptParams, 0, sizeof(CRYPT_DECRYPT_MESSAGE_PARA));
+  ZeroMemory(&decryptParams, sizeof(CRYPT_DECRYPT_MESSAGE_PARA));
   decryptParams.cbSize = sizeof(CRYPT_DECRYPT_MESSAGE_PARA);
   decryptParams.dwMsgAndCertEncodingType = MY_ENCODING_TYPE;
   decryptParams.cCertStore = 1;
   decryptParams.rghCertStore = &hStoreHandle;
 
-  DWORD tempCbDecryptedBlob = 0; // Use a temp variable for the size
+  DWORD tempCbDecryptedBlob = 0;
   if (!CryptDecryptMessage(&decryptParams, pbEncryptedBlob, cbEncryptedBlob,
                            NULL, &tempCbDecryptedBlob, NULL)) {
-    HandleError("Error getting decrypted message size");
     return -1;
   }
-  printf("The size for the decrypted message is: %u.\n", tempCbDecryptedBlob);
-
-  // Allocate memory for the decrypted data in C
   *pbDecryptedBlob = (BYTE *)malloc(tempCbDecryptedBlob);
-  if (!(*pbDecryptedBlob)) { // Check the dereferenced pointer
-    // DO NOT free pbEncryptedBlob here - it's managed by Go
+  if (!(*pbDecryptedBlob)) {
     HandleError("Memory allocation error while decrypting");
     return -2;
   }
 
-  // Call CryptDecryptMessage again to get the actual decrypted data
   if (!CryptDecryptMessage(&decryptParams, pbEncryptedBlob, cbEncryptedBlob,
                            *pbDecryptedBlob, &tempCbDecryptedBlob, NULL)) {
-    free(*pbDecryptedBlob);  // Free the allocated buffer, not the
-                             // pointer-to-pointer
-    *pbDecryptedBlob = NULL; // Set it to NULL to signal failure
-    // DO NOT free pbEncryptedBlob here - it's managed by Go
-    HandleError("Error decrypting the message");
+    free(*pbDecryptedBlob);
+    *pbDecryptedBlob = NULL;
     return -3;
   }
-
-  // Update the output size parameter
   *out_len = tempCbDecryptedBlob;
-
-  printf("Message Decrypted Successfully. \n");
-  // Be cautious with %s if the decrypted data might not be null-terminated or
-  // is binary printf("The decrypted string is: %.*s\n", tempCbDecryptedBlob,
-  // (char*)*pbDecryptedBlob);
-
-  // DO NOT free pbEncryptedBlob here - it's managed by Go
-  // The caller (Go) is responsible for freeing pbEncryptedBlob
-  // The caller (Go) is also responsible for freeing *pbDecryptedBlob after use
 
   return 0;
 }
@@ -560,70 +532,7 @@ void clear_certificates() {
 //
 // NOTE: Helper functions implementations
 //
-PCCERT_CONTEXT GetRecipientCert(HCERTSTORE hCertStore, wchar_t *pSubject) {
-  wchar_t *subject = pSubject;
-  PCCERT_CONTEXT pCertContext = NULL;
-  DWORD dwSize = 0;
-  CRYPT_KEY_PROV_INFO *pKeyInfo = NULL;
-  int mustFree;
-  DWORD dwKeySpec = 0;
-  HCRYPTPROV hProv;
-
-  for (;;) {
-    if (subject) {
-      pCertContext = CertFindCertificateInStore(
-          hCertStore, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0,
-          CERT_FIND_SUBJECT_STR_W, subject, pCertContext);
-      if (pCertContext)
-        return pCertContext;
-    } else {
-      pCertContext = CertFindCertificateInStore(
-          hCertStore, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0, CERT_FIND_ANY,
-          NULL, pCertContext);
-    }
-
-    if (pCertContext) {
-      if (!CryptAcquireCertificatePrivateKey(pCertContext, 0, NULL, &hProv,
-                                             &dwKeySpec, &mustFree)) {
-        if (mustFree)
-          CryptReleaseContext(hProv, 0);
-        continue;
-      }
-
-      if (!(CertGetCertificateContextProperty(
-              pCertContext, CERT_KEY_PROV_INFO_PROP_ID, NULL, &dwSize))) {
-        printf("Certificate property was not got\n");
-        return NULL;
-      }
-
-      if (pKeyInfo)
-        free(pKeyInfo);
-
-      pKeyInfo = (CRYPT_KEY_PROV_INFO *)malloc(dwSize);
-      if (!pKeyInfo) {
-        printf("Error occurred during the time of memory allocating\n");
-        return NULL;
-      }
-
-      if (!(CertGetCertificateContextProperty(
-              pCertContext, CERT_KEY_PROV_INFO_PROP_ID, pKeyInfo, &dwSize))) {
-        free(pKeyInfo);
-        printf("Certificate property was not got\n");
-        return NULL;
-      }
-
-      if (mustFree)
-        CryptReleaseContext(hProv, 0);
-      free(pKeyInfo);
-      return pCertContext;
-    } else {
-      printf("Certificate with private key was not found\n");
-      return NULL;
-    }
-  }
-}
-
-const char *GetHashOid(PCCERT_CONTEXT pCert) {
+static const char *GetHashOid(PCCERT_CONTEXT pCert) {
   const char *pKeyAlg =
       pCert->pCertInfo->SubjectPublicKeyInfo.Algorithm.pszObjId;
 
@@ -637,7 +546,7 @@ const char *GetHashOid(PCCERT_CONTEXT pCert) {
   return NULL;
 }
 
-void HandleError(const char *s) {
+static void HandleError(const char *s) {
   printf("An error occurred in running the program.\n");
   printf("%s\n", s);
   DWORD err = GetLastError();
@@ -646,91 +555,7 @@ void HandleError(const char *s) {
   exit(1);
 }
 
-PCCERT_CONTEXT GetRecipientCertExchange(HCERTSTORE hCertStore) {
-  PCCERT_CONTEXT pCertContext = NULL;
-  BOOL bCertNotFind = TRUE;
-  DWORD dwSize = 0;
-  CRYPT_KEY_PROV_INFO *pKeyInfo = NULL;
-  DWORD PropId = CERT_KEY_PROV_INFO_PROP_ID;
-  HCRYPTPROV hProv = 0;
-  DWORD dwKeySpec = 0;
-  BOOL fFreeProv = FALSE;
-
-  if (!hCertStore)
-    return NULL;
-
-  do {
-    // Поиск сертификатов в хранилище до тех пор, пока не будет достигнут
-    // конец хранилища, или сертификат с ключем AT_KEYEXCHANGE не будет найден.
-    pCertContext = CertFindCertificateInStore(
-        hCertStore, // Дескриптор хранилища, в котором будет осуществлен поиск.
-        MY_ENCODING_TYPE, 0, CERT_FIND_PROPERTY, &PropId, pCertContext);
-    if (!pCertContext)
-      break;
-
-    // Для простоты в этом коде реализован только поиск первого
-    // вхождения ключа AT_KEYEXCHANGE. Во многих случаях, помимо
-    // поиска типа ключа, осуществляется также поиск определенного
-    // имени субъекта.
-
-    // Однократный вызов функции CertGetCertificateContextProperty
-    // для получения возврашенного размера структуры.
-    if (!(CertGetCertificateContextProperty(
-            pCertContext, CERT_KEY_PROV_INFO_PROP_ID, NULL, &dwSize))) {
-      printf("Error getting key property.\n");
-      return NULL;
-    }
-
-    //--------------------------------------------------------------
-    // распределение памяти под возвращенную структуру.
-
-    free(pKeyInfo);
-
-    pKeyInfo = (CRYPT_KEY_PROV_INFO *)malloc(dwSize);
-
-    if (!pKeyInfo) {
-      HandleError("Error allocating memory for pKeyInfo.");
-    }
-
-    //--------------------------------------------------------------
-    // Получение структуры информации о ключе.
-
-    if (!(CertGetCertificateContextProperty(
-            pCertContext, CERT_KEY_PROV_INFO_PROP_ID, pKeyInfo, &dwSize))) {
-      HandleError("The second call to the function failed.");
-    }
-
-    //-------------------------------------------
-    // Проверка члена dwKeySpec на расширенный ключ и типа провайдера
-    if (pKeyInfo->dwKeySpec == AT_KEYEXCHANGE &&
-        isGostType(pKeyInfo->dwProvType)) {
-      //-------------------------------------------
-      // попробуем открыть провайдер
-      fFreeProv = FALSE;
-      if (CryptAcquireCertificatePrivateKey(
-              pCertContext,
-              CRYPT_ACQUIRE_COMPARE_KEY_FLAG | CRYPT_ACQUIRE_SILENT_FLAG, NULL,
-              &hProv, &dwKeySpec, &fFreeProv)) {
-        HCRYPTKEY hKey = 0;
-        if (CryptGetUserKey(hProv, dwKeySpec, &hKey)) {
-          bCertNotFind = FALSE;
-          CryptDestroyKey(hKey);
-        }
-        if (fFreeProv)
-          CryptReleaseContext(hProv, 0);
-      }
-    }
-  } while (bCertNotFind && pCertContext);
-
-  free(pKeyInfo);
-
-  if (bCertNotFind)
-    return NULL;
-  else
-    return (pCertContext);
-}
-
-void GetCertDName(PCERT_NAME_BLOB pNameBlob, char **pszName) {
+static void GetCertDName(PCERT_NAME_BLOB pNameBlob, char **pszName) {
   DWORD cbName;
 
   cbName =
@@ -757,89 +582,19 @@ static PCCERT_CONTEXT get_cert_by_id_internal(uint8_t idx) {
   return certificates[idx];
 }
 
-// left it here for testing directly in c
-// int main() {
-//   const unsigned char *data = (const unsigned char *)"sas velik";
-//   DWORD data_size = (DWORD)strlen((const char *)data);
-//   unsigned char *signed_data = NULL;
-//   DWORD signed_data_size = 0;
-//   int result = sign_simple(data, data_size, &signed_data, &signed_data_size);
-//   if (result != 0) {
-//     fprintf(stderr, "failed to sign: %d\n", result);
-//     return 1;
-//   }
-//
-//   printf("signed successfully %lu\n", sizeof(signed_data));
-//
-//   GoCertInfo *cert_info = (GoCertInfo *)malloc(sizeof(GoCertInfo));
-//   if (!cert_info) {
-//     fprintf(stderr, "failed to allocate memory for cert_info\n");
-//     free(signed_data);
-//     return 1;
-//   }
-//
-//   // Initialize the structure to zero
-//   memset(cert_info, 0, sizeof(GoCertInfo));
-//   uint verification_status = 0;
-//
-//   verify_signature(signed_data, signed_data_size, cert_info,
-//                    &verification_status);
-//   if (verification_status != 0) {
-//     fprintf(stderr, "failed to verify signature: %d\n", verification_status);
-//     return 1;
-//   }
-//
-//   if (cert_info) {
-//     free(cert_info);
-//   }
-//
-//   printf("verified\n");
-//   // FILE *fptr = fopen("sign.dat", "w");
-//   // if (!fptr) {
-//   //   perror("fopen");
-//   //   free(signed_data);
-//   //   return 1;
-//   // }
-//   // if (signed_data_size > 0) {
-//   //   size_t written = fwrite(signed_data, 1, (size_t)signed_data_size,
-//   // fptr);
-//   //   if (written != signed_data_size) {
-//   //     fprintf(stderr, "write error: wrote %zu of %lu\n", written,
-//   //             (unsigned long)signed_data_size);
-//   //   }
-//   // }
-//   // fclose(fptr);
-//   // free(signed_data);
-//   return 0;
-// }
+static char *wide_to_utf8(const wchar_t *wide_str) {
+  if (!wide_str)
+    return NULL;
 
-// int main() {
-//   SIGNER_ERR err = initialize_certificates();
-//   if (err != SUCCESS) {
-//     fprintf(stderr, "failed to initialize certificates\n");
-//     return 1;
-//   }
-//
-//   GoCertInfo *cert_info = (GoCertInfo *)malloc(sizeof(GoCertInfo));
-//   if (!cert_info) {
-//     fprintf(stderr, "failed to allocate memory for cert_info\n");
-//     return 1;
-//   }
-//
-//   // Initialize the structure to zero
-//   memset(cert_info, 0, sizeof(GoCertInfo));
-//
-//   err = get_cert_info(certificates[0], cert_info);
-//   if (err != SUCCESS) {
-//     fprintf(stderr, "failed to get certificate info\n");
-//     return 2;
-//   }
-//
-//   printf("Certificate info:\n\tcert_len: %d\n\tsubject_name: %s\n",
-//          cert_info->cert_length, cert_info->subject_name);
-//
-//   free(certificates);
-//   free(cert_info);
-//
-//   return 0;
-// }
+  int utf8_len =
+      WideCharToMultiByte(CP_UTF8, 0, wide_str, -1, NULL, 0, NULL, NULL);
+  if (utf8_len <= 0)
+    return NULL;
+
+  char *utf8_str = (char *)malloc(utf8_len);
+  if (!utf8_str)
+    return NULL;
+
+  WideCharToMultiByte(CP_UTF8, 0, wide_str, -1, utf8_str, utf8_len, NULL, NULL);
+  return utf8_str;
+}

@@ -1,11 +1,13 @@
-//go:build linux
-// +build linux
+//go:build windows || linux
+// +build windows linux
 
 package gocades
 
 /*
-#cgo CFLAGS: -Wall -DUNIX -I/opt/cprocsp/include/pki -I/opt/cprocsp/include/cpcsp -I/opt/cprocsp/include
-#cgo LDFLAGS: -L/opt/cprocsp/lib/amd64 -lcades -lcapi20 -lcapi10 -lrdrsup
+#cgo windows CFLAGS: -Wall -Wno-unknown-pragmas -Wno-maybe-uninitialized -IC:/PROGRA~2/CRYPTO~1/SDK/include
+#cgo windows LDFLAGS: -LC:/PROGRA~2/CRYPTO~1/SDK/lib/amd64 -lcades -lcpasn1 -lcplib -ladvapi32 -lcrypt32
+#cgo linux CFLAGS: -Wall -DUNIX -I/opt/cprocsp/include/pki -I/opt/cprocsp/include/cpcsp -I/opt/cprocsp/include
+#cgo linux LDFLAGS: -L/opt/cprocsp/lib/amd64 -lcades -lcapi20 -lcapi10 -lrdrsup
 #include "signer.h"
 #include <string.h>
 */
@@ -145,7 +147,7 @@ func (s *Signer) Verify(data []byte) (bool, *CertInfo, error) {
 	if cCertInfo.signing_algo != nil && cCertInfo.algo_length > 0 {
 		algoBytes := C.GoBytes(unsafe.Pointer(cCertInfo.signing_algo), C.int(cCertInfo.algo_length))
 		certInfo.SigningAlgorithm = string(algoBytes)
-		//certInfo.SubjectLength = uint32(cCertInfo.subject_length)
+		certInfo.SubjectLength = uint32(cCertInfo.subject_length)
 	}
 
 	certInfo.HasPrivateKey = cCertInfo.has_private_key != 0
@@ -177,13 +179,21 @@ func (s *Signer) Encrypt(data []byte) ([]byte, error) {
 		return nil, errors.New("input data is empty")
 	}
 
+	if !s.initialized {
+		return nil, errors.New("certificates are not initialized")
+	}
+
+	if len(s.Certificates) == 0 {
+		return nil, errors.New("no valid certificates")
+	}
+
 	cData := (*C.uchar)(unsafe.Pointer(&data[0]))
 	dataLen := C.DWORD(len(data))
 
 	var cEncrypteddData *C.uchar
 	var encryptedDataLen C.DWORD
 
-	result := C.encrypt(cData, dataLen, &cEncrypteddData, &encryptedDataLen)
+	result := C.encrypt(cData, dataLen, &cEncrypteddData, &encryptedDataLen, C.uint8_t(s.SelectedCert))
 
 	if int(result) != 0 {
 		return nil, errors.New("signing failed")
@@ -209,10 +219,10 @@ func (s *Signer) Decrypt(data []byte) ([]byte, error) {
 	}
 
 	cData := (*C.uchar)(unsafe.Pointer(&data[0]))
-	dataLen := C.uint(len(data))
+	dataLen := C.DWORD(len(data))
 
 	var cDecryptedData *C.uchar
-	var decryptedDataLen C.uint
+	var decryptedDataLen C.DWORD
 
 	result := C.decrypt(cData, dataLen, &cDecryptedData, &decryptedDataLen)
 	if int(result) != 0 {
@@ -288,7 +298,6 @@ func (s *Signer) GetCertificateByIndex(idx int) (*CertInfo, error) {
 		certInfo.SerialNumber = serialBytes
 	}
 
-	// Convert subject name
 	if cCertInfo.subject_name != nil && cCertInfo.subject_length > 0 {
 		subjectBytes := C.GoBytes(unsafe.Pointer(cCertInfo.subject_name), C.int(cCertInfo.subject_length))
 		certInfo.SubjectName = string(subjectBytes)

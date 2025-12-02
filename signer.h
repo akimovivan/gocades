@@ -44,7 +44,7 @@ SIGNER_ERR verify_signature(const unsigned char *signed_data,
                             BOOL *verification_status);
 
 int encrypt(unsigned char *pbContent, DWORD cbContent,
-            unsigned char **pbEncryptedBlob, DWORD *out_len);
+            unsigned char **pbEncryptedBlob, DWORD *out_len, uint8_t cert_idx);
 
 
 int decrypt(unsigned char *pbEncryptedBlob, DWORD cbEncryptedBlob,
