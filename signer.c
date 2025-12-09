@@ -248,21 +248,18 @@ SIGNER_ERR get_cert_info(PCCERT_CONTEXT pCertContext, GoCertInfo *cert_info) {
     return FAILURE;
   }
 
+  // Get valid date of certificate expiry and convert it to unix time
+  uint64_t filetime;
+  filetime =
+      ((uint64_t)pCertContext->pCertInfo->NotAfter.dwHighDateTime << 32) |
+      pCertContext->pCertInfo->NotAfter.dwLowDateTime;
+  const int64_t EPOCH_DIFFERENCE = 11644473600LL; // seconds
+  DWORD unix_time = (filetime / 10000000) - EPOCH_DIFFERENCE;
+  cert_info->not_after = unix_time;
+
+
   DWORD subject_len = CertGetNameStringA(
       pCertContext, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, NULL, NULL, 0);
-
-  // if (subject_len > 0) {
-  //   cert_info->subject_name =
-  //       (unsigned char *)malloc(subject_len); // Use char* for strings
-  //   if (cert_info->subject_name) {
-  //     CertGetNameStringA(pCertContext, CERT_NAME_FRIENDLY_DISPLAY_TYPE, 0,
-  //     NULL,
-  //                        (LPSTR)cert_info->subject_name, subject_len);
-  //     cert_info->subject_length = subject_len - 1;
-  //   } else {
-  //     return FAILURE;
-  //   }
-  // }
 
   if (subject_len > 0) {
     wchar_t *wide_subject = (wchar_t *)malloc(subject_len * sizeof(wchar_t));

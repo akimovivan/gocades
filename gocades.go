@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"time"
 	"unsafe"
 )
 
@@ -27,7 +28,8 @@ type CertInfo struct {
 	HasPrivateKey    bool
 	SerialNumber     []byte // hex encoded value
 	SigningAlgorithm string
-	Idx              int // Id of this certificate in c static array
+	Idx              int    // Id of this certificate in c static array
+	NotAfter         string // expiry date
 }
 
 // Signer provides cryptographic signing functionality using CryptoPro CAdES
@@ -304,6 +306,9 @@ func (s *Signer) GetCertificateByIndex(idx int) (*CertInfo, error) {
 	}
 
 	certInfo.HasPrivateKey = cCertInfo.has_private_key != 0
+
+	notAfter := C.DWORD(cCertInfo.not_after)
+	certInfo.NotAfter = time.Unix(int64(notAfter), 0).Format("01/02/2006")
 
 	certInfo.Idx = idx
 

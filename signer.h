@@ -18,17 +18,17 @@ typedef enum {
 
 } SIGNER_ERR;
 
-// NOTE: structs
 typedef struct {
   unsigned char *cert_data;     // Certificate encoded data
-  DWORD cert_length;     // Length of certificate data
+  DWORD cert_length;            // Length of certificate data
   unsigned char *subject_name;  // Subject name (as UTF-8)
-  DWORD subject_length;  // Length of subject name
+  DWORD subject_length;         // Length of subject name
   int has_private_key;          // 1 if has private key, 0 otherwise
   unsigned char *serial_number; // serial number
-  DWORD serial_length;   // length of serial number
+  DWORD serial_length;          // length of serial number
   char *signing_algo;           // signing algorithm of the certificate
-  DWORD algo_length;     // Length of signing_algo string
+  DWORD algo_length;            // Length of signing_algo string
+  DWORD not_after;              // expiry date
 } GoCertInfo;
 
 #ifdef __cplusplus
@@ -46,11 +46,8 @@ SIGNER_ERR verify_signature(const unsigned char *signed_data,
 int encrypt(unsigned char *pbContent, DWORD cbContent,
             unsigned char **pbEncryptedBlob, DWORD *out_len, uint8_t cert_idx);
 
-
 int decrypt(unsigned char *pbEncryptedBlob, DWORD cbEncryptedBlob,
-            unsigned char **pbDecryptedBlob,
-            DWORD *out_len); 
-
+            unsigned char **pbDecryptedBlob, DWORD *out_len);
 
 // initialize_certificates populates static array of pointers to PCCERT_CONTEXT
 // with privateKey
