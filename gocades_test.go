@@ -83,5 +83,5 @@ func TestCertificatesHandling(t *testing.T) {
 	cert_info, err := signer.GetCertificateByIndex(0)
 	require.NoError(t, err)
 
-	t.Logf("Certificate subj: %s; serial: %s; valid: %s", cert_info.SubjectName, hex.EncodeToString(cert_info.SerialNumber), cert_info.NotAfter)
+	t.Logf("Certificate subj: %s; issuer: %s; serial: %s; valid: %s", cert_info.SubjectName, cert_info.Issuer, hex.EncodeToString(cert_info.SerialNumber), cert_info.NotAfter)
 }

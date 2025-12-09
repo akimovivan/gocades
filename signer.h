@@ -19,16 +19,18 @@ typedef enum {
 } SIGNER_ERR;
 
 typedef struct {
-  unsigned char *cert_data;     // Certificate encoded data
-  DWORD cert_length;            // Length of certificate data
-  unsigned char *subject_name;  // Subject name (as UTF-8)
-  DWORD subject_length;         // Length of subject name
-  int has_private_key;          // 1 if has private key, 0 otherwise
-  unsigned char *serial_number; // serial number
-  DWORD serial_length;          // length of serial number
-  char *signing_algo;           // signing algorithm of the certificate
-  DWORD algo_length;            // Length of signing_algo string
-  DWORD not_after;              // expiry date
+  unsigned char *cert_data;     /* Certificate encoded data */
+  DWORD cert_length;            /* Length of certificate data */
+  unsigned char *subject_name;  /* Subject name (as UTF-8) */
+  DWORD subject_length;         /* Length of subject name */
+  int has_private_key;          /* 1 if has private key, 0 otherwise */
+  unsigned char *serial_number; /* serial number */
+  DWORD serial_length;          /* length of serial number */
+  char *signing_algo;           /* signing algorithm of the certificate */
+  DWORD algo_length;            /* Length of signing_algo string */
+  DWORD not_after;              /* expiry date */
+  unsigned char *issuer;        /* certificate issuer */
+  DWORD issuer_length;          /* length of issuer string */
 } GoCertInfo;
 
 #ifdef __cplusplus

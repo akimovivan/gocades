@@ -27,6 +27,7 @@ static char *wide_to_utf8(const wchar_t *wide_str);
 static PCCERT_CONTEXT *certificates = NULL;
 static uint8_t cert_count = 0;
 static PCCERT_CONTEXT get_cert_by_id_internal(uint8_t idx);
+static PCCERT_CONTEXT GetIssuerCertFromChain(PCCERT_CONTEXT pSubjectCert);
 
 //
 // NOTE: library func
@@ -257,7 +258,6 @@ SIGNER_ERR get_cert_info(PCCERT_CONTEXT pCertContext, GoCertInfo *cert_info) {
   DWORD unix_time = (filetime / 10000000) - EPOCH_DIFFERENCE;
   cert_info->not_after = unix_time;
 
-
   DWORD subject_len = CertGetNameStringA(
       pCertContext, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, NULL, NULL, 0);
 
@@ -285,6 +285,24 @@ SIGNER_ERR get_cert_info(PCCERT_CONTEXT pCertContext, GoCertInfo *cert_info) {
     if (cert_info->signing_algo) {
       strcpy(cert_info->signing_algo, oid);
       cert_info->algo_length = oid_len;
+    }
+  }
+
+  PCCERT_CONTEXT parentCert = GetIssuerCertFromChain(pCertContext);
+  DWORD dwIssuerNameSize =
+      CertGetNameStringA(parentCert, CERT_NAME_SIMPLE_DISPLAY_TYPE,
+                         CERT_NAME_ISSUER_FLAG, NULL, NULL, 0);
+  if (dwIssuerNameSize > 0) {
+    wchar_t *wide_subject =
+        (wchar_t *)malloc(dwIssuerNameSize * sizeof(wchar_t));
+    if (wide_subject) {
+      CertGetNameStringW(parentCert, CERT_NAME_SIMPLE_DISPLAY_TYPE,
+                         CERT_NAME_ISSUER_FLAG, NULL, wide_subject,
+                         dwIssuerNameSize);
+      char *utf8_issuer = wide_to_utf8(wide_subject);
+      cert_info->issuer = (unsigned char *)utf8_issuer;
+      cert_info->issuer_length = strlen(utf8_issuer);
+      free(wide_subject);
     }
   }
 
@@ -591,4 +609,48 @@ static char *wide_to_utf8(const wchar_t *wide_str) {
 
   WideCharToMultiByte(CP_UTF8, 0, wide_str, -1, utf8_str, utf8_len, NULL, NULL);
   return utf8_str;
+}
+
+static PCCERT_CONTEXT GetIssuerCertFromChain(PCCERT_CONTEXT pSubjectCert) {
+    PCCERT_CONTEXT pIssuerCert = NULL;
+    
+    // Build the certificate chain
+    HCERTCHAINENGINE hChainEngine = NULL;
+    CERT_CHAIN_PARA ChainPara = {0};
+    PCCERT_CHAIN_CONTEXT pChainContext = NULL;
+    
+    ChainPara.cbSize = sizeof(CERT_CHAIN_PARA);
+    ChainPara.RequestedUsage.dwType = USAGE_MATCH_TYPE_AND;
+    ChainPara.RequestedUsage.Usage.cUsageIdentifier = 0;
+    ChainPara.RequestedUsage.Usage.rgpszUsageIdentifier = NULL;
+    
+    // Build the chain
+    if (CertGetCertificateChain(
+            hChainEngine,           // Use default chain engine
+            pSubjectCert,           // Subject certificate
+            NULL,                   // Use current system time
+            NULL,                   // Use default memory store
+            &ChainPara,             // Chain parameters
+            0,                      // Flags
+            NULL,                   // Reserved
+            &pChainContext)) {      // Returned chain context
+        
+        // Check if we have a chain with more than one certificate
+        if (pChainContext->cChain > 0 && 
+            pChainContext->rgpChain[0]->cElement > 1) {
+            
+            // The issuer is typically the second element in the chain (index 1)
+            // First element [0] is the subject certificate, second [1] is its issuer
+            PCERT_CHAIN_ELEMENT pElement = pChainContext->rgpChain[0]->rgpElement[1];
+            
+            // Duplicate the certificate context to return it
+            pIssuerCert = CertDuplicateCertificateContext(
+                pElement->pCertContext);
+        }
+        
+        // Clean up the chain context
+        CertFreeCertificateChain(pChainContext);
+    }
+    
+    return pIssuerCert;
 }

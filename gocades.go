@@ -30,6 +30,7 @@ type CertInfo struct {
 	SigningAlgorithm string
 	Idx              int    // Id of this certificate in c static array
 	NotAfter         string // expiry date
+	Issuer           string
 }
 
 // Signer provides cryptographic signing functionality using CryptoPro CAdES
@@ -303,6 +304,11 @@ func (s *Signer) GetCertificateByIndex(idx int) (*CertInfo, error) {
 		algoBytes := C.GoBytes(unsafe.Pointer(cCertInfo.signing_algo), C.int(cCertInfo.algo_length))
 		certInfo.SigningAlgorithm = string(algoBytes)
 		//certInfo.SubjectLength = uint32(cCertInfo.subject_length)
+	}
+
+	if cCertInfo.issuer != nil && cCertInfo.issuer_length > 0 {
+		issuerBytes := C.GoBytes(unsafe.Pointer(cCertInfo.issuer), C.int(cCertInfo.issuer_length))
+		certInfo.Issuer = string(issuerBytes)
 	}
 
 	certInfo.HasPrivateKey = cCertInfo.has_private_key != 0
