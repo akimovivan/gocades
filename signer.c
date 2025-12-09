@@ -321,9 +321,6 @@ int encrypt(unsigned char *pbContent, DWORD cbContent,
 
   DWORD cbEncryptedBlob;
 
-  printf("source message: %s\n", pbContent);
-  printf("message length: %d bytes \n", cbContent);
-
   // Получение дескриптора криптографического провайдера.
   if (!CryptAcquireContext(
           &hCryptProv, // Адрес возврашаемого дескриптора.

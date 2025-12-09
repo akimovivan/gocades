@@ -15,7 +15,6 @@ import "C"
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"runtime"
 	"unsafe"
 )
@@ -83,7 +82,7 @@ func (s *Signer) Sign(data []byte) ([]byte, error) {
 
 	result := C.sign_simple(cData, dataLen, &cSignedData, &signedDataLen, certIdx)
 
-	if int(result) != 0 {
+	if int(result) != C.SUCCESS {
 		return nil, errors.New("signing failed")
 	}
 
@@ -113,8 +112,6 @@ func (s *Signer) Verify(data []byte) (bool, *CertInfo, error) {
 	defer s.freeCertInfo(&cCertInfo)
 
 	result := C.verify_signature(cData, dataLen, &cCertInfo, &verificationStatus)
-
-	fmt.Printf("len of cCertInfo: %d\n", cCertInfo.cert_length)
 
 	if result != C.SUCCESS {
 		return false, nil, errors.New("failed to verify signature")
@@ -226,10 +223,8 @@ func (s *Signer) Decrypt(data []byte) ([]byte, error) {
 
 	result := C.decrypt(cData, dataLen, &cDecryptedData, &decryptedDataLen)
 	if int(result) != 0 {
-		slog.Error(fmt.Sprintf("failed to execute with code %d", int(result)))
 		return nil, errors.New("failed to decrypt")
 	}
-	slog.Debug("I was here", "outLen", decryptedDataLen)
 
 	if cDecryptedData == nil || decryptedDataLen <= 0 {
 		return nil, errors.New("no signed data returned")
@@ -278,8 +273,6 @@ func (s *Signer) GetCertificateByIndex(idx int) (*CertInfo, error) {
 	defer s.freeCertInfo(&cCertInfo)
 
 	result := C.get_certificate_by_id(C.uint8_t(idx), &cCertInfo)
-
-	fmt.Printf("len of cCertInfo: %d\n", cCertInfo.cert_length)
 
 	if result != C.SUCCESS {
 		return nil, errors.New("failed to verify signature")
